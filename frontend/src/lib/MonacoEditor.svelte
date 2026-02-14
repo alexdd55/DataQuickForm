@@ -8,6 +8,7 @@
   export let language: "json" | "xml" | "plaintext" = "json";
   export let errorPosition: { line: number; column: number } | null = null;
   export let onChange: (v: string) => void = () => {};
+  export let readonly = false;
 
   let el: HTMLDivElement;
   let editor: Monaco.editor.IStandaloneCodeEditor | null = null;
@@ -37,6 +38,7 @@
       minimap: { enabled: false },
       wordWrap: "on",
       fontSize: 14,
+      readOnly: readonly,
     });
 
     const sub = editor.onDidChangeModelContent(() => {
@@ -53,6 +55,7 @@
     const model = editor.getModel();
     if (model && model.getValue() !== value) editor.setValue(value);
     if (model) monaco.editor.setModelLanguage(model, language);
+    editor.updateOptions({ readOnly: readonly });
   }
 
   $: if (editor && monaco) {
