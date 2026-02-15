@@ -6,7 +6,7 @@ export function FormatContent(arg1:string,arg2:string):Promise<main.ProcessResul
 
 export function OpenFile(arg1:string):Promise<main.OpenFileResult>;
 
-export function OpenFileDialogAndRead():Promise<main.OpenFileResult | null>;
+export function OpenFileDialogAndRead():Promise<main.OpenFileResult>;
 
 export function SaveFile(arg1:string,arg2:string):Promise<string>;
 
