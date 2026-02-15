@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/user"
 	"path/filepath"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"time"
 )
@@ -18,7 +20,7 @@ type AppLogger struct {
 }
 
 func newAppLogger() (*AppLogger, error) {
-	home, err := os.UserHomeDir()
+	home, err := resolveHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("home directory konnte nicht bestimmt werden: %w", err)
 	}
@@ -47,6 +49,50 @@ func newAppLogger() (*AppLogger, error) {
 		logFile:   appLog,
 		crashFile: crashLog,
 	}, nil
+}
+
+func resolveHomeDir() (string, error) {
+	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		return home, nil
+	}
+
+	if u, err := user.Current(); err == nil && strings.TrimSpace(u.HomeDir) != "" {
+		return u.HomeDir, nil
+	}
+
+	if home := strings.TrimSpace(os.Getenv("HOME")); home != "" {
+		return home, nil
+	}
+
+	if home := strings.TrimSpace(os.Getenv("USERPROFILE")); home != "" {
+		return home, nil
+	}
+
+	return "", fmt.Errorf("kein Home-Verzeichnis gefunden")
+}
+
+func writeBootstrapCrashLog(message string) {
+	home, err := resolveHomeDir()
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "%s [CRASH] %s (zusätzlich konnte kein Home-Verzeichnis bestimmt werden: %v)\n", time.Now().Format(time.RFC3339), message, err)
+		return
+	}
+
+	logDir := filepath.Join(home, ".dataquickformlog")
+	if err := os.MkdirAll(logDir, 0o755); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "%s [CRASH] %s (zusätzlich konnte das Log-Verzeichnis nicht erstellt werden: %v)\n", time.Now().Format(time.RFC3339), message, err)
+		return
+	}
+
+	path := filepath.Join(logDir, "crash.log")
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "%s [CRASH] %s (zusätzlich konnte crash.log nicht geöffnet werden: %v)\n", time.Now().Format(time.RFC3339), message, err)
+		return
+	}
+	defer func() { _ = f.Close() }()
+
+	_, _ = fmt.Fprintf(f, "%s [CRASH] %s\n", time.Now().Format(time.RFC3339), message)
 }
 
 func (l *AppLogger) Close() {
@@ -84,9 +130,24 @@ func (l *AppLogger) LogCrash(recovered any) {
 		return
 	}
 
+	entry := fmt.Sprintf("recovered panic: %v", recovered)
+	l.writeCrashEntry(entry, string(debug.Stack()))
+}
+
+func (l *AppLogger) LogCrashError(err error) {
+	if l == nil || err == nil {
+		return
+	}
+
+	l.writeCrashEntry(fmt.Sprintf("fatal error: %v", err), "")
+}
+
+func (l *AppLogger) writeCrashEntry(message string, stack string) {
 	timestamp := time.Now().Format(time.RFC3339)
-	stack := string(debug.Stack())
-	crashEntry := fmt.Sprintf("%s [CRASH] recovered panic: %v\n%s\n", timestamp, recovered, stack)
+	crashEntry := fmt.Sprintf("%s [CRASH] %s\n", timestamp, message)
+	if stack != "" {
+		crashEntry += stack + "\n"
+	}
 
 	l.mu.Lock()
 	defer l.mu.Unlock()

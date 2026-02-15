@@ -18,7 +18,9 @@ var assets embed.FS
 func main() {
 	logger, err := newAppLogger()
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "Logger-Initialisierung fehlgeschlagen: %v\n", err)
+		msg := fmt.Sprintf("Logger-Initialisierung fehlgeschlagen: %v", err)
+		_, _ = fmt.Fprintln(os.Stderr, msg)
+		writeBootstrapCrashLog(msg)
 		os.Exit(1)
 	}
 	defer logger.Close()
@@ -26,7 +28,7 @@ func main() {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			logger.LogCrash(recovered)
-			panic(recovered)
+			os.Exit(1)
 		}
 	}()
 
@@ -53,7 +55,8 @@ func main() {
 	})
 	if err != nil {
 		logger.Errorf("Wails-Run fehlgeschlagen: %v", err)
-		panic(err)
+		logger.LogCrashError(err)
+		os.Exit(1)
 	}
 }
 
