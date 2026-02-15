@@ -375,6 +375,10 @@
   .toolbar button:active:enabled {
     background: linear-gradient(#2b2b2b, #242424);
   }
+  
+  .margin-view-overlay {
+    background-color: #dadada;
+  }
 
   .tabs {
     display: flex;
@@ -382,7 +386,7 @@
     padding: 0 8px;
     flex-wrap: wrap;
     background: #252526;
-    border-bottom: 1px solid #333;
+    border-bottom: 0px solid #333;
   }
 
   .tab {
@@ -404,9 +408,9 @@
   }
 
   .tab.active {
-    background: #1e1e1e;
+    background: #dadada;
     border-color: #3a3a3a;
-    color: #ffffff;
+    color: #1e1e1e;
   }
 
   .tab-close {
@@ -464,13 +468,13 @@
     flex: 1;
     padding: 8px;
     min-height: 0;
-    background: #1e1e1e;
+    background: #dadada;
   }
 
   .editor {
     text-align: left;
     flex: 1;
-    border: 1px solid #333;
+    border: 0px solid #333;
     border-radius: 6px;
     min-width: 0;
     min-height: 0;
@@ -482,7 +486,7 @@
     flex: 1;
     min-width: 0;
     min-height: 0;
-    border: 1px solid #333;
+    border: 0px solid #333;
     border-radius: 6px;
     overflow: hidden;
   }
@@ -494,8 +498,8 @@
   }
 
   .footer {
-    border-top: 1px solid #2d2d2d;
-    background: #007acc;
+    border-top: 1px solid #dadada;
+    background: #252526;
   }
 
   .status {
