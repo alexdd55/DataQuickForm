@@ -23,7 +23,7 @@ func NewApp(logger *AppLogger) *App { return &App{logger: logger} }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	a.logger.Infof("Anwendung gestartet")
+	a.logger.Infof("Application started")
 }
 
 type OpenFileResult struct {
@@ -45,10 +45,10 @@ func (a *App) OpenFileDialogAndRead() (*OpenFileResult, error) {
 	a.logger.Debugf("OpenFileDialogAndRead aufgerufen")
 
 	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Datei öffnen",
+		Title: "Open file",
 		Filters: []runtime.FileFilter{
-			{DisplayName: "JSON/XML Dateien", Pattern: "*.json;*.xml"},
-			{DisplayName: "Alle Dateien", Pattern: "*"},
+			{DisplayName: "JSON/XML files", Pattern: "*.json;*.xml"},
+			{DisplayName: "All files", Pattern: "*"},
 		},
 	})
 	if err != nil {
@@ -86,11 +86,11 @@ func (a *App) SaveFileAs(suggestedFilename string, content string) (string, erro
 	a.logger.Debugf("SaveFileAs aufgerufen: suggestedFilename=%q", suggestedFilename)
 
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		Title:           "Datei speichern unter",
+		Title:           "Save file as",
 		DefaultFilename: defaultFilename(suggestedFilename),
 		Filters: []runtime.FileFilter{
-			{DisplayName: "JSON/XML Dateien", Pattern: "*.json;*.xml"},
-			{DisplayName: "Alle Dateien", Pattern: "*"},
+			{DisplayName: "JSON/XML files", Pattern: "*.json;*.xml"},
+			{DisplayName: "All files", Pattern: "*"},
 		},
 	})
 	if err != nil {
@@ -111,8 +111,8 @@ func (a *App) ShowAboutDialog() {
 	a.logger.Debugf("ShowAboutDialog aufgerufen")
 	_, _ = runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
 		Type:    runtime.InfoDialog,
-		Title:   "Über DataQuickForm",
-		Message: "DataQuickForm\nEin schneller JSON/XML-Editor mit Formatierung und Validierung.",
+		Title:   "About DataQuickForm",
+		Message: "DataQuickForm\nA fast JSON/XML editor with formatting and validation.",
 	})
 }
 
@@ -120,8 +120,8 @@ func (a *App) ShowPreferencesDialog() {
 	a.logger.Debugf("ShowPreferencesDialog aufgerufen")
 	_, _ = runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
 		Type:    runtime.InfoDialog,
-		Title:   "Einstellungen",
-		Message: "Es sind aktuell keine konfigurierbaren Einstellungen vorhanden.",
+		Title:   "Settings",
+		Message: "Settings are now available in the app preferences panel.",
 	})
 }
 
@@ -174,7 +174,7 @@ func (a *App) ValidateContent(content string, fileType string) (*ProcessResult, 
 			return &ProcessResult{Ok: false, Message: err.Error(), Line: line, Column: column}, nil
 		}
 		a.logger.Infof("JSON-Validierung erfolgreich")
-		return &ProcessResult{Ok: true, Message: "JSON ist gültig."}, nil
+		return &ProcessResult{Ok: true, Message: "JSON is valid."}, nil
 	case "xml":
 		if err := validateXML(content); err != nil {
 			line, column := xmlErrorPosition(err)
@@ -182,10 +182,10 @@ func (a *App) ValidateContent(content string, fileType string) (*ProcessResult, 
 			return &ProcessResult{Ok: false, Message: err.Error(), Line: line, Column: column}, nil
 		}
 		a.logger.Infof("XML-Validierung erfolgreich")
-		return &ProcessResult{Ok: true, Message: "XML ist wohlgeformt."}, nil
+		return &ProcessResult{Ok: true, Message: "XML is well-formed."}, nil
 	default:
 		a.logger.Errorf("Unbekannter Dateityp bei Validierung: %q", fileType)
-		return &ProcessResult{Ok: false, Message: "Validierung wird nur für JSON/XML unterstützt."}, nil
+		return &ProcessResult{Ok: false, Message: "Validation is only supported for JSON/XML."}, nil
 	}
 }
 
@@ -201,7 +201,7 @@ func (a *App) FormatContent(content string, fileType string) (*ProcessResult, er
 			return &ProcessResult{Ok: false, Message: err.Error(), Line: line, Column: column}, nil
 		}
 		a.logger.Infof("JSON-Formatierung erfolgreich")
-		return &ProcessResult{Ok: true, Message: "JSON wurde formatiert.", Output: formatted}, nil
+		return &ProcessResult{Ok: true, Message: "JSON formatted.", Output: formatted}, nil
 	case "xml":
 		formatted, err := formatXML(content)
 		if err != nil {
@@ -210,10 +210,10 @@ func (a *App) FormatContent(content string, fileType string) (*ProcessResult, er
 			return &ProcessResult{Ok: false, Message: err.Error(), Line: line, Column: column}, nil
 		}
 		a.logger.Infof("XML-Formatierung erfolgreich")
-		return &ProcessResult{Ok: true, Message: "XML wurde formatiert.", Output: formatted}, nil
+		return &ProcessResult{Ok: true, Message: "XML formatted.", Output: formatted}, nil
 	default:
 		a.logger.Errorf("Unbekannter Dateityp bei Formatierung: %q", fileType)
-		return &ProcessResult{Ok: false, Message: "Formatierung wird nur für JSON/XML unterstützt."}, nil
+		return &ProcessResult{Ok: false, Message: "Formatting is only supported for JSON/XML."}, nil
 	}
 }
 

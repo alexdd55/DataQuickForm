@@ -65,31 +65,31 @@ func main() {
 func buildApplicationMenu(app *App) *menu.Menu {
 	root := menu.NewMenu()
 
-	fileMenu := root.AddSubmenu("Datei")
-	fileMenu.AddText("Neu", keys.CmdOrCtrl("n"), func(_ *menu.CallbackData) {
+	fileMenu := root.AddSubmenu("File")
+	fileMenu.AddText("New", keys.CmdOrCtrl("n"), func(_ *menu.CallbackData) {
 		runtime.EventsEmit(app.ctx, "menu:new")
 	})
-	fileMenu.AddText("Öffnen...", keys.CmdOrCtrl("o"), func(_ *menu.CallbackData) {
+	fileMenu.AddText("Open...", keys.CmdOrCtrl("o"), func(_ *menu.CallbackData) {
 		runtime.EventsEmit(app.ctx, "menu:open")
 	})
-	fileMenu.AddText("Speichern", keys.CmdOrCtrl("s"), func(_ *menu.CallbackData) {
+	fileMenu.AddText("Save", keys.CmdOrCtrl("s"), func(_ *menu.CallbackData) {
 		runtime.EventsEmit(app.ctx, "menu:save")
 	})
-	fileMenu.AddText("Speichern unter...", keys.Combo("s", keys.CmdOrCtrlKey, keys.ShiftKey), func(_ *menu.CallbackData) {
+	fileMenu.AddText("Save as...", keys.Combo("s", keys.CmdOrCtrlKey, keys.ShiftKey), func(_ *menu.CallbackData) {
 		runtime.EventsEmit(app.ctx, "menu:saveas")
 	})
 	fileMenu.AddSeparator()
-	fileMenu.AddText("Beenden", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
+	fileMenu.AddText("Quit", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
 		runtime.Quit(app.ctx)
 	})
 
-	editMenu := root.AddSubmenu("Bearbeiten")
-	editMenu.AddText("Einstellungen", keys.CmdOrCtrl(","), func(_ *menu.CallbackData) {
+	editMenu := root.AddSubmenu("Edit")
+	editMenu.AddText("Settings", keys.CmdOrCtrl(","), func(_ *menu.CallbackData) {
 		runtime.EventsEmit(app.ctx, "menu:preferences")
 	})
 
-	helpMenu := root.AddSubmenu("Hilfe")
-	helpMenu.AddText("Über", nil, func(_ *menu.CallbackData) {
+	helpMenu := root.AddSubmenu("Help")
+	helpMenu.AddText("About", nil, func(_ *menu.CallbackData) {
 		runtime.EventsEmit(app.ctx, "menu:about")
 	})
 
