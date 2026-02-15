@@ -2,6 +2,8 @@ package main
 
 import (
 	"embed"
+	"fmt"
+	"os"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/menu"
@@ -14,10 +16,25 @@ import (
 var assets embed.FS
 
 func main() {
-	app := NewApp()
-	appMenu := buildApplicationMenu(app)
+	logger, err := newAppLogger()
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "Logger-Initialisierung fehlgeschlagen: %v\n", err)
+		os.Exit(1)
+	}
+	defer logger.Close()
 
-	err := wails.Run(&options.App{
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			logger.LogCrash(recovered)
+			panic(recovered)
+		}
+	}()
+
+	app := NewApp(logger)
+	appMenu := buildApplicationMenu(app)
+	logger.Infof("Wails-Anwendung wird gestartet")
+
+	err = wails.Run(&options.App{
 		Title:  "DataQuickForm",
 		Width:  1200,
 		Height: 800,
@@ -35,6 +52,7 @@ func main() {
 		},
 	})
 	if err != nil {
+		logger.Errorf("Wails-Run fehlgeschlagen: %v", err)
 		panic(err)
 	}
 }

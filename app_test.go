@@ -3,7 +3,7 @@ package main
 import "testing"
 
 func TestValidateContentJSON(t *testing.T) {
-	app := NewApp()
+	app := NewApp(nil)
 
 	okRes, err := app.ValidateContent(`{"foo": 1}`, "json")
 	if err != nil {
@@ -26,7 +26,7 @@ func TestValidateContentJSON(t *testing.T) {
 }
 
 func TestFormatContentJSON(t *testing.T) {
-	app := NewApp()
+	app := NewApp(nil)
 	res, err := app.FormatContent(`{"foo":1,"bar":{"baz":2}}`, "json")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -41,7 +41,7 @@ func TestFormatContentJSON(t *testing.T) {
 }
 
 func TestValidateAndFormatXML(t *testing.T) {
-	app := NewApp()
+	app := NewApp(nil)
 
 	okRes, err := app.ValidateContent(`<root><a>1</a><b/></root>`, "xml")
 	if err != nil {
