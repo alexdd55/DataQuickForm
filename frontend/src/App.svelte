@@ -1,8 +1,17 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import MonacoEditor from "./lib/MonacoEditor.svelte";
-  import { OnFileDrop } from "../wailsjs/runtime/runtime";
-  import { FormatContent, OpenFile, ValidateContent } from "../wailsjs/go/main/App";
+  import { EventsOn, OnFileDrop } from "../wailsjs/runtime/runtime";
+  import {
+    FormatContent,
+    OpenFile,
+    OpenFileDialogAndRead,
+    SaveFile,
+    SaveFileAs,
+    ShowAboutDialog,
+    ShowPreferencesDialog,
+    ValidateContent
+  } from "../wailsjs/go/main/App";
 
   type Tab = {
     id: string;
@@ -10,6 +19,7 @@
     path?: string;
     lang: "json" | "xml" | "plaintext";
     value: string;
+    dirty: boolean;
   };
 
   type Status = {
@@ -31,7 +41,7 @@
   }
 
   function createUntitledTab(): Tab {
-    return { id: makeId(), title: "Untitled.json", lang: "json", value: "{\n  \n}\n" };
+    return { id: makeId(), title: "Untitled.json", lang: "json", value: "{\n  \n}\n", dirty: false };
   }
 
   let tabs: Tab[] = [createUntitledTab()];
@@ -57,7 +67,7 @@
 
     tabs = [
       ...tabs.slice(0, index),
-      { ...current, value: v },
+      { ...current, value: v, dirty: true },
       ...tabs.slice(index + 1)
     ];
   }
@@ -116,6 +126,72 @@
     status = { kind: "info", message: "Neuer Tab erstellt." };
   }
 
+
+  function getBaseName(path: string): string {
+    const normalized = path.replace(/\\/g, "/");
+    const parts = normalized.split("/");
+    return parts[parts.length - 1] || path;
+  }
+
+  async function openFileFromDialog() {
+    const res = await OpenFileDialogAndRead();
+    if (!res) {
+      status = { kind: "info", message: "Öffnen abgebrochen." };
+      return;
+    }
+
+    const id = makeId();
+    tabs = [
+      ...tabs,
+      { id, title: res.filename, path: res.path, lang: guessLang(res.type), value: res.content, dirty: false }
+    ];
+    activeId = id;
+    status = { kind: "info", message: `${res.filename} geladen.` };
+    outputValue = "";
+    errorPosition = null;
+  }
+
+  async function saveActiveFile() {
+    const tab = active();
+    if (!tab.path) {
+      await saveActiveFileAs();
+      return;
+    }
+
+    const savedPath = await SaveFile(tab.path, tab.value);
+    if (!savedPath) {
+      status = { kind: "info", message: "Speichern abgebrochen." };
+      return;
+    }
+
+    setActiveTab({ path: savedPath, title: getBaseName(savedPath), dirty: false });
+    status = { kind: "ok", message: `${getBaseName(savedPath)} gespeichert.` };
+  }
+
+  async function saveActiveFileAs() {
+    const tab = active();
+    const savedPath = await SaveFileAs(tab.title, tab.value);
+    if (!savedPath) {
+      status = { kind: "info", message: "Speichern unter abgebrochen." };
+      return;
+    }
+
+    setActiveTab({ path: savedPath, title: getBaseName(savedPath), dirty: false });
+    status = { kind: "ok", message: `${getBaseName(savedPath)} gespeichert.` };
+  }
+
+  async function showAbout() {
+    await ShowAboutDialog();
+  }
+
+  async function showPreferences() {
+    await ShowPreferencesDialog();
+  }
+
+  function createNewFile() {
+    createTabRightOfActive();
+  }
+
   function guessLang(type: string): Tab["lang"] {
     if (type === "json") return "json";
     if (type === "xml") return "xml";
@@ -138,7 +214,7 @@
     const id = makeId();
     tabs = [
       ...tabs,
-      { id, title: res.filename, path: res.path, lang: guessLang(res.type), value: res.content }
+      { id, title: res.filename, path: res.path, lang: guessLang(res.type), value: res.content, dirty: false }
     ];
     activeId = id;
     status = { kind: "info", message: `${res.filename} geladen.` };
@@ -311,7 +387,7 @@
     }
 
     const content = await file.text();
-    setActiveTab({ title: file.name, path: undefined, lang, value: content });
+    setActiveTab({ title: file.name, path: undefined, lang, value: content, dirty: false });
     status = { kind: "info", message: `${file.name} geladen.` };
     outputValue = "";
     errorPosition = null;
@@ -329,8 +405,15 @@
           openPath(validFiles[0]);
         }
       }, false);
+
+      EventsOn("menu:new", createNewFile);
+      EventsOn("menu:open", openFileFromDialog);
+      EventsOn("menu:save", saveActiveFile);
+      EventsOn("menu:saveas", saveActiveFileAs);
+      EventsOn("menu:about", showAbout);
+      EventsOn("menu:preferences", showPreferences);
     } catch (error) {
-      console.error("Failed to initialize drag & drop:", error);
+      console.error("Failed to initialize app runtime events:", error);
     }
   });
 </script>
@@ -553,7 +636,7 @@
         >
           ×
         </button>
-        <span class="tab-title">{t.title}</span>
+        <span class="tab-title">{t.title}{t.dirty ? " *" : ""}</span>
       </div>
     {/each}
     <button

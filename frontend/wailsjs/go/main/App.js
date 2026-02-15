@@ -10,6 +10,26 @@ export function OpenFile(arg1) {
   return window['go']['main']['App']['OpenFile'](arg1);
 }
 
+export function OpenFileDialogAndRead() {
+  return window['go']['main']['App']['OpenFileDialogAndRead']();
+}
+
+export function SaveFile(arg1, arg2) {
+  return window['go']['main']['App']['SaveFile'](arg1, arg2);
+}
+
+export function SaveFileAs(arg1, arg2) {
+  return window['go']['main']['App']['SaveFileAs'](arg1, arg2);
+}
+
+export function ShowAboutDialog() {
+  return window['go']['main']['App']['ShowAboutDialog']();
+}
+
+export function ShowPreferencesDialog() {
+  return window['go']['main']['App']['ShowPreferencesDialog']();
+}
+
 export function ValidateContent(arg1, arg2) {
   return window['go']['main']['App']['ValidateContent'](arg1, arg2);
 }

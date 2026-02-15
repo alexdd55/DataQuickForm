@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type App struct {
@@ -33,6 +35,82 @@ type ProcessResult struct {
 	Output  string `json:"output,omitempty"`
 	Line    int    `json:"line,omitempty"`
 	Column  int    `json:"column,omitempty"`
+}
+
+func (a *App) OpenFileDialogAndRead() (*OpenFileResult, error) {
+	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Datei öffnen",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "JSON/XML Dateien", Pattern: "*.json;*.xml"},
+			{DisplayName: "Alle Dateien", Pattern: "*"},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if path == "" {
+		return nil, nil
+	}
+
+	return a.OpenFile(path)
+}
+
+func (a *App) SaveFile(path string, content string) (string, error) {
+	if strings.TrimSpace(path) == "" {
+		return "", nil
+	}
+
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		return "", err
+	}
+
+	return path, nil
+}
+
+func (a *App) SaveFileAs(suggestedFilename string, content string) (string, error) {
+	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Datei speichern unter",
+		DefaultFilename: defaultFilename(suggestedFilename),
+		Filters: []runtime.FileFilter{
+			{DisplayName: "JSON/XML Dateien", Pattern: "*.json;*.xml"},
+			{DisplayName: "Alle Dateien", Pattern: "*"},
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+
+	if path == "" {
+		return "", nil
+	}
+
+	return a.SaveFile(path, content)
+}
+
+func (a *App) ShowAboutDialog() {
+	_, _ = runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
+		Type:    runtime.InfoDialog,
+		Title:   "Über DataQuickForm",
+		Message: "DataQuickForm\nEin schneller JSON/XML-Editor mit Formatierung und Validierung.",
+	})
+}
+
+func (a *App) ShowPreferencesDialog() {
+	_, _ = runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
+		Type:    runtime.InfoDialog,
+		Title:   "Einstellungen",
+		Message: "Es sind aktuell keine konfigurierbaren Einstellungen vorhanden.",
+	})
+}
+
+func defaultFilename(name string) string {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return "untitled.json"
+	}
+
+	return filepath.Base(trimmed)
 }
 
 func (a *App) OpenFile(path string) (*OpenFileResult, error) {
