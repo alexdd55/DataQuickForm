@@ -15,12 +15,16 @@ import (
 )
 
 type App struct {
-	ctx context.Context
+	ctx    context.Context
+	logger *AppLogger
 }
 
-func NewApp() *App { return &App{} }
+func NewApp(logger *AppLogger) *App { return &App{logger: logger} }
 
-func (a *App) startup(ctx context.Context) { a.ctx = ctx }
+func (a *App) startup(ctx context.Context) {
+	a.ctx = ctx
+	a.logger.Infof("Anwendung gestartet")
+}
 
 type OpenFileResult struct {
 	Path     string `json:"path"`
@@ -38,6 +42,8 @@ type ProcessResult struct {
 }
 
 func (a *App) OpenFileDialogAndRead() (*OpenFileResult, error) {
+	a.logger.Debugf("OpenFileDialogAndRead aufgerufen")
+
 	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
 		Title: "Datei öffnen",
 		Filters: []runtime.FileFilter{
@@ -46,29 +52,39 @@ func (a *App) OpenFileDialogAndRead() (*OpenFileResult, error) {
 		},
 	})
 	if err != nil {
+		a.logger.Errorf("Öffnen-Dialog fehlgeschlagen: %v", err)
 		return nil, err
 	}
 
 	if path == "" {
+		a.logger.Infof("Öffnen-Dialog abgebrochen")
 		return nil, nil
 	}
+	a.logger.Infof("Datei im Dialog ausgewählt: %s", path)
 
 	return a.OpenFile(path)
 }
 
 func (a *App) SaveFile(path string, content string) (string, error) {
+	a.logger.Debugf("SaveFile aufgerufen: path=%q", path)
+
 	if strings.TrimSpace(path) == "" {
+		a.logger.Infof("SaveFile übersprungen: leerer Pfad")
 		return "", nil
 	}
 
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		a.logger.Errorf("Datei konnte nicht gespeichert werden (%s): %v", path, err)
 		return "", err
 	}
+	a.logger.Infof("Datei gespeichert: %s", path)
 
 	return path, nil
 }
 
 func (a *App) SaveFileAs(suggestedFilename string, content string) (string, error) {
+	a.logger.Debugf("SaveFileAs aufgerufen: suggestedFilename=%q", suggestedFilename)
+
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Datei speichern unter",
 		DefaultFilename: defaultFilename(suggestedFilename),
@@ -78,17 +94,21 @@ func (a *App) SaveFileAs(suggestedFilename string, content string) (string, erro
 		},
 	})
 	if err != nil {
+		a.logger.Errorf("Speichern-unter-Dialog fehlgeschlagen: %v", err)
 		return "", err
 	}
 
 	if path == "" {
+		a.logger.Infof("Speichern-unter-Dialog abgebrochen")
 		return "", nil
 	}
+	a.logger.Infof("Zielpfad für Save As gewählt: %s", path)
 
 	return a.SaveFile(path, content)
 }
 
 func (a *App) ShowAboutDialog() {
+	a.logger.Debugf("ShowAboutDialog aufgerufen")
 	_, _ = runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
 		Type:    runtime.InfoDialog,
 		Title:   "Über DataQuickForm",
@@ -97,6 +117,7 @@ func (a *App) ShowAboutDialog() {
 }
 
 func (a *App) ShowPreferencesDialog() {
+	a.logger.Debugf("ShowPreferencesDialog aufgerufen")
 	_, _ = runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
 		Type:    runtime.InfoDialog,
 		Title:   "Einstellungen",
@@ -114,63 +135,84 @@ func defaultFilename(name string) string {
 }
 
 func (a *App) OpenFile(path string) (*OpenFileResult, error) {
+	a.logger.Debugf("OpenFile aufgerufen: path=%q", path)
+
 	b, err := os.ReadFile(path)
 	if err != nil {
+		a.logger.Errorf("Datei konnte nicht gelesen werden (%s): %v", path, err)
 		return nil, err
 	}
 
 	ext := strings.ToLower(filepath.Ext(path))
 	t := "text"
-	if ext == ".json" {
+	switch ext {
+	case ".json":
 		t = "json"
-	} else if ext == ".xml" {
+	case ".xml":
 		t = "xml"
 	}
 
-	return &OpenFileResult{
+	result := &OpenFileResult{
 		Path:     path,
 		Filename: filepath.Base(path),
 		Type:     t,
 		Content:  string(b),
-	}, nil
+	}
+	a.logger.Infof("Datei gelesen: %s (type=%s)", path, t)
+
+	return result, nil
 }
 
 func (a *App) ValidateContent(content string, fileType string) (*ProcessResult, error) {
+	a.logger.Debugf("ValidateContent aufgerufen: fileType=%q", fileType)
+
 	switch strings.ToLower(fileType) {
 	case "json":
 		if err := validateJSON(content); err != nil {
 			line, column := jsonErrorPosition(content, err)
+			a.logger.Errorf("JSON-Validierung fehlgeschlagen (line=%d, col=%d): %v", line, column, err)
 			return &ProcessResult{Ok: false, Message: err.Error(), Line: line, Column: column}, nil
 		}
+		a.logger.Infof("JSON-Validierung erfolgreich")
 		return &ProcessResult{Ok: true, Message: "JSON ist gültig."}, nil
 	case "xml":
 		if err := validateXML(content); err != nil {
 			line, column := xmlErrorPosition(err)
+			a.logger.Errorf("XML-Validierung fehlgeschlagen (line=%d, col=%d): %v", line, column, err)
 			return &ProcessResult{Ok: false, Message: err.Error(), Line: line, Column: column}, nil
 		}
+		a.logger.Infof("XML-Validierung erfolgreich")
 		return &ProcessResult{Ok: true, Message: "XML ist wohlgeformt."}, nil
 	default:
+		a.logger.Errorf("Unbekannter Dateityp bei Validierung: %q", fileType)
 		return &ProcessResult{Ok: false, Message: "Validierung wird nur für JSON/XML unterstützt."}, nil
 	}
 }
 
 func (a *App) FormatContent(content string, fileType string) (*ProcessResult, error) {
+	a.logger.Debugf("FormatContent aufgerufen: fileType=%q", fileType)
+
 	switch strings.ToLower(fileType) {
 	case "json":
 		formatted, err := formatJSON(content)
 		if err != nil {
 			line, column := jsonErrorPosition(content, err)
+			a.logger.Errorf("JSON-Formatierung fehlgeschlagen (line=%d, col=%d): %v", line, column, err)
 			return &ProcessResult{Ok: false, Message: err.Error(), Line: line, Column: column}, nil
 		}
+		a.logger.Infof("JSON-Formatierung erfolgreich")
 		return &ProcessResult{Ok: true, Message: "JSON wurde formatiert.", Output: formatted}, nil
 	case "xml":
 		formatted, err := formatXML(content)
 		if err != nil {
 			line, column := xmlErrorPosition(err)
+			a.logger.Errorf("XML-Formatierung fehlgeschlagen (line=%d, col=%d): %v", line, column, err)
 			return &ProcessResult{Ok: false, Message: err.Error(), Line: line, Column: column}, nil
 		}
+		a.logger.Infof("XML-Formatierung erfolgreich")
 		return &ProcessResult{Ok: true, Message: "XML wurde formatiert.", Output: formatted}, nil
 	default:
+		a.logger.Errorf("Unbekannter Dateityp bei Formatierung: %q", fileType)
 		return &ProcessResult{Ok: false, Message: "Formatierung wird nur für JSON/XML unterstützt."}, nil
 	}
 }
