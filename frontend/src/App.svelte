@@ -167,6 +167,69 @@
     setActiveValue(outputValue);
   }
 
+
+  function compressJsonContent(content: string): string {
+    return JSON.stringify(JSON.parse(content));
+  }
+
+  function compressXmlContent(content: string): string {
+    return content
+      .replace(/>\s+</g, "><")
+      .replace(/\n/g, "")
+      .trim();
+  }
+
+  function runCompress() {
+    if (!outputValue) {
+      status = { kind: "info", message: "Kein Output zum Komprimieren vorhanden." };
+      return;
+    }
+
+    try {
+      const lang = active().lang;
+      if (lang === "json") {
+        outputValue = compressJsonContent(outputValue);
+      } else if (lang === "xml") {
+        outputValue = compressXmlContent(outputValue);
+      } else {
+        outputValue = outputValue.trim();
+      }
+
+      status = { kind: "ok", message: "Output wurde komprimiert." };
+      errorPosition = null;
+    } catch (error) {
+      status = { kind: "error", message: `Komprimieren fehlgeschlagen: ${(error as Error).message}` };
+    }
+  }
+
+  async function copyOutputToClipboard() {
+    if (!outputValue) {
+      status = { kind: "info", message: "Kein Output zum Kopieren vorhanden." };
+      return;
+    }
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(outputValue);
+      } else {
+        const helper = document.createElement("textarea");
+        helper.value = outputValue;
+        helper.setAttribute("readonly", "true");
+        helper.style.position = "fixed";
+        helper.style.opacity = "0";
+        document.body.appendChild(helper);
+        helper.focus();
+        helper.select();
+        document.execCommand("copy");
+        document.body.removeChild(helper);
+      }
+
+      status = { kind: "ok", message: "Output wurde in die Zwischenablage kopiert." };
+    } catch (error) {
+      status = { kind: "error", message: `Kopieren fehlgeschlagen: ${(error as Error).message}` };
+    }
+  }
+
   async function handleLocalFileDrop(event: DragEvent) {
     event.preventDefault();
     const droppedFiles = event.dataTransfer?.files;
@@ -235,7 +298,9 @@
   <div class="toolbar">
     <button on:click={runFormat} disabled={!supportsActions() || isProcessing}>Format & Anwenden</button>
     <button on:click={runValidate} disabled={!supportsActions() || isProcessing}>Validate</button>
+    <button on:click={runCompress} disabled={!outputValue || isProcessing}>Compress Output</button>
     <button on:click={copyOutputToEditor} disabled={!outputValue}>Output → Editor</button>
+    <button on:click={copyOutputToClipboard} disabled={!outputValue}>Copy Output</button>
     <div class="hint">Drag & Drop: *.json / *.xml</div>
   </div>
 
