@@ -28,6 +28,7 @@ func main() {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			logger.LogCrash(recovered)
+			logger.Close()
 			os.Exit(1)
 		}
 	}()
@@ -56,6 +57,7 @@ func main() {
 	if err != nil {
 		logger.Errorf("Wails-Run fehlgeschlagen: %v", err)
 		logger.LogCrashError(err)
+		logger.Close()
 		os.Exit(1)
 	}
 }
