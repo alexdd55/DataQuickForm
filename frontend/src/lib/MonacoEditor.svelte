@@ -8,6 +8,7 @@
   export let language: "json" | "xml" | "plaintext" = "json";
   export let errorPosition: { line: number; column: number } | null = null;
   export let onChange: (v: string) => void = () => {};
+  export let onDropFile: ((event: DragEvent) => void) | null = null;
   export let readonly = false;
 
   let el: HTMLDivElement;
@@ -45,8 +46,32 @@
       onChange(editor!.getValue());
     });
 
+    const handleDrop = (event: DragEvent) => {
+      if (!onDropFile) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      onDropFile(event);
+    };
+
+    const handleDragOver = (event: DragEvent) => {
+      if (!onDropFile) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    el.addEventListener("dragover", handleDragOver, true);
+    el.addEventListener("drop", handleDrop, true);
+
     return () => {
       sub.dispose();
+      el.removeEventListener("dragover", handleDragOver, true);
+      el.removeEventListener("drop", handleDrop, true);
       editor?.dispose();
     };
   });

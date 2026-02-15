@@ -39,8 +39,6 @@
   let errorPosition: ErrorPosition = null;
   let outputValue = "";
   let processingToken = 0;
-  let activeTab: Tab;
-  let activeContent = "";
 
   const active = () => tabs.find((t) => t.id === activeId) ?? tabs[0];
 
@@ -78,16 +76,50 @@
     ];
     activeId = id;
     status = { kind: "info", message: `${res.filename} geladen.` };
+    outputValue = "";
     errorPosition = null;
   }
 
-  async function processContent() {
+  async function runValidate() {
     const tab = active();
     const currentToken = ++processingToken;
 
     if (!(tab.lang === "json" || tab.lang === "xml")) {
       outputValue = tab.value;
-      status = { kind: "info", message: "Validierung/Formatierung nur für JSON/XML verfügbar." };
+      status = { kind: "info", message: "Validierung wird nur für JSON/XML unterstützt." };
+      errorPosition = null;
+      return;
+    }
+
+    isProcessing = true;
+    try {
+      const validation = await ValidateContent(tab.value, tab.lang);
+      if (currentToken !== processingToken) return;
+
+      status = { kind: validation.ok ? "ok" : "error", message: validation.message };
+      if (validation.ok) {
+        outputValue = tab.value;
+        errorPosition = null;
+      } else {
+        outputValue = "";
+        errorPosition = validation.line
+          ? { line: validation.line, column: Math.max(1, validation.column || 1) }
+          : null;
+      }
+    } finally {
+      if (currentToken === processingToken) {
+        isProcessing = false;
+      }
+    }
+  }
+
+  async function runFormat() {
+    const tab = active();
+    const currentToken = ++processingToken;
+
+    if (!(tab.lang === "json" || tab.lang === "xml")) {
+      outputValue = tab.value;
+      status = { kind: "info", message: "Formatierung wird nur für JSON/XML unterstützt." };
       errorPosition = null;
       return;
     }
@@ -113,6 +145,7 @@
       if (formatting.ok && formatting.output !== undefined) {
         outputValue = formatting.output;
         errorPosition = null;
+        setActiveValue(formatting.output);
       } else {
         outputValue = "";
         errorPosition = formatting.line
@@ -126,23 +159,75 @@
     }
   }
 
-  async function runValidate() {
-    await processContent();
-  }
-
-  async function runFormat() {
-    await processContent();
-    if (outputValue && supportsActions()) {
-      setActiveValue(outputValue);
-    }
-  }
-
   function copyOutputToEditor() {
     if (!outputValue) {
       return;
     }
 
     setActiveValue(outputValue);
+  }
+
+
+  function compressJsonContent(content: string): string {
+    return JSON.stringify(JSON.parse(content));
+  }
+
+  function compressXmlContent(content: string): string {
+    return content
+      .replace(/>\s+</g, "><")
+      .replace(/\n/g, "")
+      .trim();
+  }
+
+  function runCompress() {
+    if (!outputValue) {
+      status = { kind: "info", message: "Kein Output zum Komprimieren vorhanden." };
+      return;
+    }
+
+    try {
+      const lang = active().lang;
+      if (lang === "json") {
+        outputValue = compressJsonContent(outputValue);
+      } else if (lang === "xml") {
+        outputValue = compressXmlContent(outputValue);
+      } else {
+        outputValue = outputValue.trim();
+      }
+
+      status = { kind: "ok", message: "Output wurde komprimiert." };
+      errorPosition = null;
+    } catch (error) {
+      status = { kind: "error", message: `Komprimieren fehlgeschlagen: ${(error as Error).message}` };
+    }
+  }
+
+  async function copyOutputToClipboard() {
+    if (!outputValue) {
+      status = { kind: "info", message: "Kein Output zum Kopieren vorhanden." };
+      return;
+    }
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(outputValue);
+      } else {
+        const helper = document.createElement("textarea");
+        helper.value = outputValue;
+        helper.setAttribute("readonly", "true");
+        helper.style.position = "fixed";
+        helper.style.opacity = "0";
+        document.body.appendChild(helper);
+        helper.focus();
+        helper.select();
+        document.execCommand("copy");
+        document.body.removeChild(helper);
+      }
+
+      status = { kind: "ok", message: "Output wurde in die Zwischenablage kopiert." };
+    } catch (error) {
+      status = { kind: "error", message: `Kopieren fehlgeschlagen: ${(error as Error).message}` };
+    }
   }
 
   async function handleLocalFileDrop(event: DragEvent) {
@@ -163,6 +248,8 @@
     const content = await file.text();
     setActiveTab({ title: file.name, path: undefined, lang, value: content });
     status = { kind: "info", message: `${file.name} geladen.` };
+    outputValue = "";
+    errorPosition = null;
   }
 
   onMount(async () => {
@@ -182,11 +269,6 @@
     }
   });
 
-  $: activeTab = active();
-  $: activeContent = activeTab?.value;
-  $: if (activeContent !== undefined) {
-    processContent();
-  }
 </script>
 
 <style>
@@ -216,7 +298,9 @@
   <div class="toolbar">
     <button on:click={runFormat} disabled={!supportsActions() || isProcessing}>Format & Anwenden</button>
     <button on:click={runValidate} disabled={!supportsActions() || isProcessing}>Validate</button>
+    <button on:click={runCompress} disabled={!outputValue || isProcessing}>Compress Output</button>
     <button on:click={copyOutputToEditor} disabled={!outputValue}>Output → Editor</button>
+    <button on:click={copyOutputToClipboard} disabled={!outputValue}>Copy Output</button>
     <div class="hint">Drag & Drop: *.json / *.xml</div>
   </div>
 
@@ -237,14 +321,13 @@
       class="editor"
       role="region"
       aria-label="Editor mit Drag-and-Drop für JSON/XML"
-      on:dragover|preventDefault
-      on:drop={handleLocalFileDrop}
     >
       <MonacoEditor
         value={active().value}
         language={active().lang}
         errorPosition={errorPosition}
         onChange={setActiveValue}
+        onDropFile={handleLocalFileDrop}
       />
     </div>
     <div class="output">
