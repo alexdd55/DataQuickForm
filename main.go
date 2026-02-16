@@ -84,10 +84,12 @@ func buildApplicationMenu(app *App) *menu.Menu {
 		runtime.Quit(app.ctx)
 	})
 
-	editMenu := root.AddSubmenu("Edit")
-	editMenu.AddText("Settings", keys.CmdOrCtrl(","), func(_ *menu.CallbackData) {
+	editMenu := menu.EditMenu()
+	editMenu.Append(menu.Separator())
+	editMenu.Append(menu.Text("Settings", keys.CmdOrCtrl(","), func(_ *menu.CallbackData) {
 		runtime.EventsEmit(app.ctx, "menu:preferences")
-	})
+	}))
+	root.Append(editMenu)
 
 	helpMenu := root.AddSubmenu("Help")
 	helpMenu.AddText("About", nil, func(_ *menu.CallbackData) {
