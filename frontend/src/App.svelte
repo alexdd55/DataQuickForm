@@ -193,6 +193,27 @@
       pt: "Copiar saída",
       fr: "Copier la sortie"
     },
+    actionUndo: {
+      en: "Undo",
+      de: "Rückgängig",
+      es: "Deshacer",
+      pt: "Desfazer",
+      fr: "Annuler"
+    },
+    actionRedo: {
+      en: "Redo",
+      de: "Wiederholen",
+      es: "Rehacer",
+      pt: "Refazer",
+      fr: "Rétablir"
+    },
+    actionClearEditor: {
+      en: "Clear editor",
+      de: "Editor leeren",
+      es: "Limpiar editor",
+      pt: "Limpar editor",
+      fr: "Effacer l'éditeur"
+    },
     dragAndDropHint: {
       en: "Drag & Drop: *.json / *.xml",
       de: "Drag & Drop: *.json / *.xml",
@@ -303,6 +324,8 @@
     lang: "json" | "xml" | "plaintext";
     value: string;
     dirty: boolean;
+    undoHistory: string[];
+    redoHistory: string[];
   };
 
   type Status = {
@@ -324,7 +347,15 @@
   }
 
   function createUntitledTab(): Tab {
-    return { id: makeId(), title: t("untitled"), lang: "json", value: "{\n  \n}\n", dirty: false };
+    return {
+      id: makeId(),
+      title: t("untitled"),
+      lang: "json",
+      value: "{\n  \n}\n",
+      dirty: false,
+      undoHistory: [],
+      redoHistory: []
+    };
   }
 
   let tabs: Tab[] = [createUntitledTab()];
@@ -337,7 +368,8 @@
 
   const active = () => tabs.find((t) => t.id === activeId) ?? tabs[0];
 
-  function setActiveValue(v: string) {
+  function setActiveValue(v: string, options: { recordUndo?: boolean } = {}) {
+    const { recordUndo = true } = options;
     const index = tabs.findIndex((t) => t.id === activeId);
     if (index === -1) {
       return;
@@ -350,7 +382,13 @@
 
     tabs = [
       ...tabs.slice(0, index),
-      { ...current, value: v, dirty: true },
+      {
+        ...current,
+        value: v,
+        dirty: true,
+        undoHistory: recordUndo ? [...current.undoHistory, current.value].slice(-200) : current.undoHistory,
+        redoHistory: recordUndo ? [] : current.redoHistory
+      },
       ...tabs.slice(index + 1)
     ];
   }
@@ -426,7 +464,16 @@
     const id = makeId();
     tabs = [
       ...tabs,
-      { id, title: res.filename, path: res.path, lang: guessLang(res.type), value: res.content, dirty: false }
+      {
+        id,
+        title: res.filename,
+        path: res.path,
+        lang: guessLang(res.type),
+        value: res.content,
+        dirty: false,
+        undoHistory: [],
+        redoHistory: []
+      }
     ];
     activeId = id;
     status = { kind: "info", message: t("loadedFile", { name: res.filename }) };
@@ -497,7 +544,16 @@
     const id = makeId();
     tabs = [
       ...tabs,
-      { id, title: res.filename, path: res.path, lang: guessLang(res.type), value: res.content, dirty: false }
+      {
+        id,
+        title: res.filename,
+        path: res.path,
+        lang: guessLang(res.type),
+        value: res.content,
+        dirty: false,
+        undoHistory: [],
+        redoHistory: []
+      }
     ];
     activeId = id;
     status = { kind: "info", message: t("loadedFile", { name: res.filename }) };
@@ -592,6 +648,69 @@
     setActiveValue(outputValue);
   }
 
+  function canUndoActive(): boolean {
+    return active().undoHistory.length > 0;
+  }
+
+  function canRedoActive(): boolean {
+    return active().redoHistory.length > 0;
+  }
+
+  function undoActiveTab() {
+    const index = tabs.findIndex((t) => t.id === activeId);
+    if (index === -1) {
+      return;
+    }
+
+    const current = tabs[index];
+    if (current.undoHistory.length === 0) {
+      return;
+    }
+
+    const previousValue = current.undoHistory[current.undoHistory.length - 1];
+    tabs = [
+      ...tabs.slice(0, index),
+      {
+        ...current,
+        value: previousValue,
+        dirty: true,
+        undoHistory: current.undoHistory.slice(0, -1),
+        redoHistory: [...current.redoHistory, current.value].slice(-200)
+      },
+      ...tabs.slice(index + 1)
+    ];
+  }
+
+  function redoActiveTab() {
+    const index = tabs.findIndex((t) => t.id === activeId);
+    if (index === -1) {
+      return;
+    }
+
+    const current = tabs[index];
+    if (current.redoHistory.length === 0) {
+      return;
+    }
+
+    const nextValue = current.redoHistory[current.redoHistory.length - 1];
+    tabs = [
+      ...tabs.slice(0, index),
+      {
+        ...current,
+        value: nextValue,
+        dirty: true,
+        undoHistory: [...current.undoHistory, current.value].slice(-200),
+        redoHistory: current.redoHistory.slice(0, -1)
+      },
+      ...tabs.slice(index + 1)
+    ];
+  }
+
+  function clearActiveTab() {
+    setActiveValue("");
+    errorPosition = null;
+  }
+
   function compressJsonContent(content: string): string {
     return JSON.stringify(JSON.parse(content));
   }
@@ -670,7 +789,15 @@
     }
 
     const content = await file.text();
-    setActiveTab({ title: file.name, path: undefined, lang, value: content, dirty: false });
+    setActiveTab({
+      title: file.name,
+      path: undefined,
+      lang,
+      value: content,
+      dirty: false,
+      undoHistory: [],
+      redoHistory: []
+    });
     status = { kind: "info", message: t("loadedFile", { name: file.name }) };
     outputValue = "";
     errorPosition = null;
@@ -951,6 +1078,9 @@
   <div class="toolbar">
     <button on:click={runFormat} disabled={!supportsActions() || isProcessing}>{t("actionFormatApply")}</button>
     <button on:click={runValidate} disabled={!supportsActions() || isProcessing}>{t("actionValidate")}</button>
+    <button on:click={undoActiveTab} disabled={!canUndoActive() || isProcessing}>{t("actionUndo")}</button>
+    <button on:click={redoActiveTab} disabled={!canRedoActive() || isProcessing}>{t("actionRedo")}</button>
+    <button on:click={clearActiveTab} disabled={!active().value}>{t("actionClearEditor")}</button>
     <button on:click={runCompress} disabled={!outputValue || isProcessing}>{t("actionCompressOutput")}</button>
     <button on:click={copyOutputToEditor} disabled={!outputValue}>{t("actionOutputToEditor")}</button>
     <button on:click={copyOutputToClipboard} disabled={!outputValue}>{t("actionCopyOutput")}</button>

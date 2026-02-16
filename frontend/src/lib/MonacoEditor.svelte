@@ -15,36 +15,8 @@
   let editor: Monaco.editor.IStandaloneCodeEditor | null = null;
   let errorDecorations: string[] = [];
 
-  onMount(async () => {
-    const monacoModule = await import("monaco-editor");
-    monaco = monacoModule.default || monacoModule;
-
-    // Configure worker paths per language service.
-    const editorWorker = await import("monaco-editor/esm/vs/editor/editor.worker?worker");
-    const jsonWorker = await import("monaco-editor/esm/vs/language/json/json.worker?worker");
-    window.MonacoEnvironment = {
-      getWorker: (_moduleId: string, label: string) => {
-        if (label === "json") {
-          return new jsonWorker.default();
-        }
-
-        return new editorWorker.default();
-      }
-    };
-
-    editor = monaco.editor.create(el, {
-      value,
-      language,
-      automaticLayout: true,
-      minimap: { enabled: false },
-      wordWrap: "on",
-      fontSize: 14,
-      readOnly: readonly,
-    });
-
-    const sub = editor.onDidChangeModelContent(() => {
-      onChange(editor!.getValue());
-    });
+  onMount(() => {
+    let sub: Monaco.IDisposable | null = null;
 
     const handleDrop = (event: DragEvent) => {
       if (!onDropFile) {
@@ -65,11 +37,45 @@
       event.stopPropagation();
     };
 
-    el.addEventListener("dragover", handleDragOver, true);
-    el.addEventListener("drop", handleDrop, true);
+    const initEditor = async () => {
+      const monacoModule = await import("monaco-editor");
+      monaco = monacoModule.default || monacoModule;
+
+      // Configure worker paths per language service.
+      const editorWorker = await import("monaco-editor/esm/vs/editor/editor.worker?worker");
+      const jsonWorker = await import("monaco-editor/esm/vs/language/json/json.worker?worker");
+      window.MonacoEnvironment = {
+        getWorker: (_moduleId: string, label: string) => {
+          if (label === "json") {
+            return new jsonWorker.default();
+          }
+
+          return new editorWorker.default();
+        }
+      };
+
+      editor = monaco.editor.create(el, {
+        value,
+        language,
+        automaticLayout: true,
+        minimap: { enabled: false },
+        wordWrap: "on",
+        fontSize: 14,
+        readOnly: readonly,
+      });
+
+      sub = editor.onDidChangeModelContent(() => {
+        onChange(editor!.getValue());
+      });
+
+      el.addEventListener("dragover", handleDragOver, true);
+      el.addEventListener("drop", handleDrop, true);
+    };
+
+    void initEditor();
 
     return () => {
-      sub.dispose();
+      sub?.dispose();
       el.removeEventListener("dragover", handleDragOver, true);
       el.removeEventListener("drop", handleDrop, true);
       editor?.dispose();
