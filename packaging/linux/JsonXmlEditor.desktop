@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=JsonXmlEditor
+Comment=JsonXmlEditor
+Exec=JsonXmlEditor
+Icon=appicon_512
+Terminal=false
+Categories=Utility;
+StartupNotify=true

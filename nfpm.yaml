@@ -1,0 +1,47 @@
+name: JsonXmlEditor
+arch: amd64
+platform: linux
+version: "1.0.0"
+section: utils
+priority: optional
+maintainer: "Alex Marquardt <alex.marquardt@gmail.com>"
+description: "JsonXmlEditor"
+license: "Proprietary"
+
+depends:
+  - libgtk-3-0
+  - libwebkit2gtk-4.1-0
+
+contents:
+  # App binary
+  - src: build/bin/JsonXmlEditor
+    dst: /usr/lib/JsonXmlEditor/JsonXmlEditor
+    file_info:
+      mode: 0755
+
+  # Convenience launcher
+  - src: /usr/lib/JsonXmlEditor/JsonXmlEditor
+    dst: /usr/bin/JsonXmlEditor
+    type: symlink
+    
+
+  # Desktop entry
+  - src: packaging/linux/JsonXmlEditor.desktop
+    dst: /usr/share/applications/JsonXmlEditor.desktop
+    file_info:
+      mode: 0644
+
+  # Icons
+  - src: packaging/linux/icons/256x256.png
+    dst: /usr/share/icons/hicolor/256x256/apps/JsonXmlEditor.png
+    file_info:
+      mode: 0644
+
+  - src: packaging/linux/icons/512x512.png
+    dst: /usr/share/icons/hicolor/512x512/apps/JsonXmlEditor.png
+    file_info:
+      mode: 0644
+
+scripts:
+  postinstall: packaging/linux/postinst.sh
+  postremove: packaging/linux/postrm.sh
