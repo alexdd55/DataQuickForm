@@ -1,6 +1,6 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "dataquickform",
+  "name": "JsonXmlEditor",
   "frontend:dir": "frontend",
   "outputfilename": "dataquickform",
   "frontend:install": "npm install",
