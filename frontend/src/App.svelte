@@ -1,8 +1,33 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import "./App.css";
   import MonacoEditor from "./lib/MonacoEditor.svelte";
-  import { getActionEditorTab, getActiveEditorTab, getActiveTab, getSourceEditorTabForDiff } from "./lib/tabState";
-  import type { DiffTab, EditorTab, Tab } from "./lib/tabState";
+  import { getActionEditorTab, getActiveEditorTab, getActiveTab } from "./lib/tabState";
+  import { getToolbarDisabledState } from "./lib/toolbarState";
+  import {
+    LOCALE_STORAGE_KEY,
+    THEME_STORAGE_KEY,
+    detectInitialLocale,
+    detectInitialThemePreference,
+    detectSystemTheme,
+    localeNames,
+    translations,
+    type Locale,
+    type ResolvedTheme,
+    type ThemePreference,
+    type TranslationKey
+  } from "./lib/appI18n";
+  import {
+    compressJsonContent,
+    compressXmlContent,
+    detectPlatform,
+    getBaseName,
+    guessLang,
+    guessLangFromFilename,
+    makeId,
+    type AppPlatform
+  } from "./lib/appUtils";
+  import type { EditorTab, Tab } from "./lib/tabState";
   import { ClipboardGetText, ClipboardSetText, EventsOn, OnFileDrop } from "../wailsjs/runtime/runtime";
   import {
     FormatContent,
@@ -13,392 +38,6 @@
     ShowAboutDialog,
     ValidateContent
   } from "../wailsjs/go/main/App";
-
-  type Locale = "en" | "de" | "es" | "pt" | "fr";
-  type ThemePreference = "system" | "light" | "dark";
-  type ResolvedTheme = "light" | "dark";
-
-  const LOCALE_STORAGE_KEY = "dqf.language";
-  const THEME_STORAGE_KEY = "dqf.theme";
-
-  const localeNames: Record<Locale, string> = {
-    en: "English",
-    de: "Deutsch",
-    es: "Español",
-    pt: "Português",
-    fr: "Français"
-  };
-
-  const translations = {
-    appReady: {
-      en: "Ready.",
-      de: "Bereit.",
-      es: "Listo.",
-      pt: "Pronto.",
-      fr: "Prêt."
-    },
-    untitled: {
-      en: "Untitled.json",
-      de: "Unbenannt.json",
-      es: "Sin título.json",
-      pt: "Sem título.json",
-      fr: "Sans titre.json"
-    },
-    newTabCreated: {
-      en: "New tab created.",
-      de: "Neuer Tab erstellt.",
-      es: "Nueva pestaña creada.",
-      pt: "Nova aba criada.",
-      fr: "Nouvel onglet créé."
-    },
-    dialogOpenCanceled: {
-      en: "Open canceled.",
-      de: "Öffnen abgebrochen.",
-      es: "Apertura cancelada.",
-      pt: "Abertura cancelada.",
-      fr: "Ouverture annulée."
-    },
-    saveCanceled: {
-      en: "Save canceled.",
-      de: "Speichern abgebrochen.",
-      es: "Guardado cancelado.",
-      pt: "Salvar cancelado.",
-      fr: "Enregistrement annulé."
-    },
-    saveAsCanceled: {
-      en: "Save as canceled.",
-      de: "Speichern unter abgebrochen.",
-      es: "Guardar como cancelado.",
-      pt: "Salvar como cancelado.",
-      fr: "Enregistrer sous annulé."
-    },
-    loadedFile: {
-      en: "{name} loaded.",
-      de: "{name} geladen.",
-      es: "{name} cargado.",
-      pt: "{name} carregado.",
-      fr: "{name} chargé."
-    },
-    savedFile: {
-      en: "{name} saved.",
-      de: "{name} gespeichert.",
-      es: "{name} guardado.",
-      pt: "{name} salvo.",
-      fr: "{name} enregistré."
-    },
-    closedTab: {
-      en: "{name} closed.",
-      de: "{name} geschlossen.",
-      es: "{name} cerrada.",
-      pt: "{name} fechada.",
-      fr: "{name} fermé."
-    },
-    onlyJsonXmlValidation: {
-      en: "Validation is only supported for JSON/XML.",
-      de: "Validierung wird nur für JSON/XML unterstützt.",
-      es: "La validación solo es compatible con JSON/XML.",
-      pt: "A validação só é compatível com JSON/XML.",
-      fr: "La validation est prise en charge uniquement pour JSON/XML."
-    },
-    onlyJsonXmlFormatting: {
-      en: "Formatting is only supported for JSON/XML.",
-      de: "Formatierung wird nur für JSON/XML unterstützt.",
-      es: "El formateo solo es compatible con JSON/XML.",
-      pt: "A formatação só é compatível com JSON/XML.",
-      fr: "Le formatage est pris en charge uniquement pour JSON/XML."
-    },
-    noOutputToCompress: {
-      en: "No output to compress.",
-      de: "Kein Output zum Komprimieren vorhanden.",
-      es: "No hay salida para comprimir.",
-      pt: "Não há saída para compactar.",
-      fr: "Aucune sortie à compresser."
-    },
-    outputCompressed: {
-      en: "Output compressed.",
-      de: "Output wurde komprimiert.",
-      es: "Salida comprimida.",
-      pt: "Saída compactada.",
-      fr: "Sortie compressée."
-    },
-    compressFailed: {
-      en: "Compression failed: {error}",
-      de: "Komprimieren fehlgeschlagen: {error}",
-      es: "Compresión fallida: {error}",
-      pt: "Falha ao compactar: {error}",
-      fr: "Échec de la compression : {error}"
-    },
-    noOutputToCopy: {
-      en: "No output to copy.",
-      de: "Kein Output zum Kopieren vorhanden.",
-      es: "No hay salida para copiar.",
-      pt: "Não há saída para copiar.",
-      fr: "Aucune sortie à copier."
-    },
-    outputCopied: {
-      en: "Output copied to clipboard.",
-      de: "Output wurde in die Zwischenablage kopiert.",
-      es: "Salida copiada al portapapeles.",
-      pt: "Saída copiada para a área de transferência.",
-      fr: "Sortie copiée dans le presse-papiers."
-    },
-    copyFailed: {
-      en: "Copy failed: {error}",
-      de: "Kopieren fehlgeschlagen: {error}",
-      es: "Error al copiar: {error}",
-      pt: "Falha ao copiar: {error}",
-      fr: "Échec de la copie : {error}"
-    },
-    clipboardUnavailable: {
-      en: "Clipboard read is not available.",
-      de: "Zwischenablage kann nicht gelesen werden.",
-      es: "La lectura del portapapeles no está disponible.",
-      pt: "A leitura da área de transferência não está disponível.",
-      fr: "La lecture du presse-papiers n'est pas disponible."
-    },
-    clipboardReadFailed: {
-      en: "Reading clipboard failed: {error}",
-      de: "Lesen der Zwischenablage fehlgeschlagen: {error}",
-      es: "Error al leer el portapapeles: {error}",
-      pt: "Falha ao ler a área de transferência: {error}",
-      fr: "Échec de la lecture du presse-papiers : {error}"
-    },
-    diffTabTitle: {
-      en: "Diff: {name} ↔ Clipboard",
-      de: "Diff: {name} ↔ Zwischenablage",
-      es: "Diff: {name} ↔ Portapapeles",
-      pt: "Diff: {name} ↔ Área de transferência",
-      fr: "Diff : {name} ↔ Presse-papiers"
-    },
-    diffCreated: {
-      en: "Clipboard diff opened.",
-      de: "Zwischenablage-Diff geöffnet.",
-      es: "Diferencia con portapapeles abierta.",
-      pt: "Diff da área de transferência aberto.",
-      fr: "Diff du presse-papiers ouvert."
-    },
-    dropOnlyJsonXml: {
-      en: "Please drop only JSON or XML files.",
-      de: "Bitte nur JSON- oder XML-Dateien ablegen.",
-      es: "Arrastra solo archivos JSON o XML.",
-      pt: "Arraste apenas arquivos JSON ou XML.",
-      fr: "Déposez uniquement des fichiers JSON ou XML."
-    },
-    languageUpdated: {
-      en: "Language set to {language}.",
-      de: "Sprache auf {language} gesetzt.",
-      es: "Idioma configurado en {language}.",
-      pt: "Idioma definido para {language}.",
-      fr: "Langue définie sur {language}."
-    },
-    actionFormatApply: {
-      en: "Format & Apply",
-      de: "Formatieren & Anwenden",
-      es: "Formatear y aplicar",
-      pt: "Formatar e aplicar",
-      fr: "Formater et appliquer"
-    },
-    actionValidate: {
-      en: "Validate",
-      de: "Validieren",
-      es: "Validar",
-      pt: "Validar",
-      fr: "Valider"
-    },
-    actionCompressOutput: {
-      en: "Compress output",
-      de: "Output komprimieren",
-      es: "Comprimir salida",
-      pt: "Compactar saída",
-      fr: "Compresser la sortie"
-    },
-    actionOutputToEditor: {
-      en: "Output → Editor",
-      de: "Output → Editor",
-      es: "Salida → Editor",
-      pt: "Saída → Editor",
-      fr: "Sortie → Éditeur"
-    },
-    actionCopyOutput: {
-      en: "Copy output",
-      de: "Output kopieren",
-      es: "Copiar salida",
-      pt: "Copiar saída",
-      fr: "Copier la sortie"
-    },
-    actionCompareClipboard: {
-      en: "Compare with clipboard",
-      de: "Mit Zwischenablage vergleichen",
-      es: "Comparar con portapapeles",
-      pt: "Comparar com a área de transferência",
-      fr: "Comparer avec le presse-papiers"
-    },
-    actionUndo: {
-      en: "Undo",
-      de: "Rückgängig",
-      es: "Deshacer",
-      pt: "Desfazer",
-      fr: "Annuler"
-    },
-    actionRedo: {
-      en: "Redo",
-      de: "Wiederholen",
-      es: "Rehacer",
-      pt: "Refazer",
-      fr: "Rétablir"
-    },
-    actionClearEditor: {
-      en: "Clear editor",
-      de: "Editor leeren",
-      es: "Limpiar editor",
-      pt: "Limpar editor",
-      fr: "Effacer l'éditeur"
-    },
-    dragAndDropHint: {
-      en: "Drag & Drop: *.json / *.xml",
-      de: "Drag & Drop: *.json / *.xml",
-      es: "Arrastrar y soltar: *.json / *.xml",
-      pt: "Arrastar e soltar: *.json / *.xml",
-      fr: "Glisser-déposer : *.json / *.xml"
-    },
-    openedFiles: {
-      en: "Opened files",
-      de: "Geöffnete Dateien",
-      es: "Archivos abiertos",
-      pt: "Arquivos abertos",
-      fr: "Fichiers ouverts"
-    },
-    closeTabLabel: {
-      en: "Close {name}",
-      de: "{name} schließen",
-      es: "Cerrar {name}",
-      pt: "Fechar {name}",
-      fr: "Fermer {name}"
-    },
-    newTabAria: {
-      en: "Open a new tab to the right of the active tab",
-      de: "Neuen Tab rechts vom aktiven Tab öffnen",
-      es: "Abrir una nueva pestaña a la derecha de la pestaña activa",
-      pt: "Abrir uma nova aba à direita da aba ativa",
-      fr: "Ouvrir un nouvel onglet à droite de l'onglet actif"
-    },
-    newTabTitle: {
-      en: "New tab",
-      de: "Neuer Tab",
-      es: "Nueva pestaña",
-      pt: "Nova aba",
-      fr: "Nouvel onglet"
-    },
-    editorRegionLabel: {
-      en: "Editor with drag and drop for JSON/XML",
-      de: "Editor mit Drag-and-Drop für JSON/XML",
-      es: "Editor con arrastrar y soltar para JSON/XML",
-      pt: "Editor com arrastar e soltar para JSON/XML",
-      fr: "Éditeur avec glisser-déposer pour JSON/XML"
-    },
-    preferencesTitle: {
-      en: "Settings",
-      de: "Einstellungen",
-      es: "Ajustes",
-      pt: "Configurações",
-      fr: "Paramètres"
-    },
-    languageLabel: {
-      en: "Language",
-      de: "Sprache",
-      es: "Idioma",
-      pt: "Idioma",
-      fr: "Langue"
-    },
-
-    themeLabel: {
-      en: "Theme",
-      de: "Darstellung",
-      es: "Tema",
-      pt: "Tema",
-      fr: "Thème"
-    },
-    themeOptionSystem: {
-      en: "System",
-      de: "System",
-      es: "Sistema",
-      pt: "Sistema",
-      fr: "Système"
-    },
-    themeOptionLight: {
-      en: "Light",
-      de: "Hell",
-      es: "Claro",
-      pt: "Claro",
-      fr: "Clair"
-    },
-    themeOptionDark: {
-      en: "Dark",
-      de: "Dunkel",
-      es: "Oscuro",
-      pt: "Escuro",
-      fr: "Sombre"
-    },
-    themeUpdated: {
-      en: "Theme set to {theme}.",
-      de: "Darstellung auf {theme} gesetzt.",
-      es: "Tema configurado en {theme}.",
-      pt: "Tema definido para {theme}.",
-      fr: "Thème défini sur {theme}."
-    },
-    close: {
-      en: "Close",
-      de: "Schließen",
-      es: "Cerrar",
-      pt: "Fechar",
-      fr: "Fermer"
-    }
-  } as const;
-
-  type TranslationKey = keyof typeof translations;
-
-  function isLocale(value: string): value is Locale {
-    return value === "en" || value === "de" || value === "es" || value === "pt" || value === "fr";
-  }
-
-  function detectInitialLocale(): Locale {
-    if (typeof localStorage === "undefined") {
-      return "en";
-    }
-
-    const saved = localStorage.getItem(LOCALE_STORAGE_KEY);
-    if (saved && isLocale(saved)) {
-      return saved;
-    }
-
-    return "en";
-  }
-
-  function isThemePreference(value: string): value is ThemePreference {
-    return value === "system" || value === "light" || value === "dark";
-  }
-
-  function detectInitialThemePreference(): ThemePreference {
-    if (typeof localStorage === "undefined") {
-      return "system";
-    }
-
-    const saved = localStorage.getItem(THEME_STORAGE_KEY);
-    if (saved && isThemePreference(saved)) {
-      return saved;
-    }
-
-    return "system";
-  }
-
-  function detectSystemTheme(): ResolvedTheme {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
-      return "light";
-    }
-
-    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  }
-
 
   let locale: Locale = detectInitialLocale();
   let themePreference: ThemePreference = detectInitialThemePreference();
@@ -451,35 +90,6 @@
     column: number;
   } | null;
 
-  type AppPlatform = "macos" | "windows" | "linux";
-
-  function detectPlatform(): AppPlatform {
-    if (typeof navigator === "undefined") {
-      return "linux";
-    }
-
-    const source = [navigator.platform, navigator.userAgent]
-      .filter((value) => typeof value === "string")
-      .join(" ")
-      .toLowerCase();
-
-    if (source.includes("mac")) {
-      return "macos";
-    }
-    if (source.includes("win")) {
-      return "windows";
-    }
-    return "linux";
-  }
-
-  function makeId(): string {
-    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-      return crypto.randomUUID();
-    }
-
-    return `tab-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-  }
-
   function createUntitledTab(): Tab {
     return {
       id: makeId(),
@@ -501,11 +111,18 @@
   let outputValue = "";
   let processingToken = 0;
   let appPlatform: AppPlatform = detectPlatform();
+  let toolbarDisabled = getToolbarDisabledState({ tabs, activeId, isProcessing, outputValue });
+  let comparePopupOpen = false;
+  let comparePopupTitle = "";
+  let comparePopupOriginal = "";
+  let comparePopupClipboard = "";
+  let comparePopupLanguage: Tab["lang"] = "json";
+  let comparePopupKey = 0;
 
   const active = () => getActiveTab(tabs, activeId);
   const activeEditor = (): EditorTab | null => getActiveEditorTab(tabs, activeId);
-  const sourceEditorForDiff = (): EditorTab | null => getSourceEditorTabForDiff(tabs, activeId);
   const actionEditor = (): EditorTab | null => getActionEditorTab(tabs, activeId);
+  $: toolbarDisabled = getToolbarDisabledState({ tabs, activeId, isProcessing, outputValue });
 
 
   function setEditorValue(editorId: string, v: string, options: { recordUndo?: boolean } = {}) {
@@ -540,24 +157,6 @@
     }
 
     setEditorValue(tab.id, v, options);
-  }
-
-  function setActiveDiffValue(v: string) {
-    const index = tabs.findIndex((t) => t.id === activeId);
-    if (index === -1) {
-      return;
-    }
-
-    const current = tabs[index];
-    if (current.kind !== "diff" || current.value === v) {
-      return;
-    }
-
-    tabs = [
-      ...tabs.slice(0, index),
-      { ...current, value: v },
-      ...tabs.slice(index + 1)
-    ];
   }
 
   function setEditorTab(editorId: string, tab: Partial<EditorTab>) {
@@ -619,12 +218,6 @@
     status = { kind: "info", message: t("newTabCreated") };
   }
 
-
-  function getBaseName(path: string): string {
-    const normalized = path.replace(/\\/g, "/");
-    const parts = normalized.split("/");
-    return parts[parts.length - 1] || path;
-  }
 
   async function openFileFromDialog() {
     const res = await OpenFileDialogAndRead();
@@ -702,23 +295,6 @@
     createTabRightOfActive();
   }
 
-  function guessLang(type: string): Tab["lang"] {
-    if (type === "json") return "json";
-    if (type === "xml") return "xml";
-    return "plaintext";
-  }
-
-  function guessLangFromFilename(filename: string): Tab["lang"] {
-    const lower = filename.toLowerCase();
-    if (lower.endsWith(".json")) return "json";
-    if (lower.endsWith(".xml")) return "xml";
-    return "plaintext";
-  }
-
-  function supportsActions() {
-    const tab = actionEditor();
-    return !!tab && (tab.lang === "json" || tab.lang === "xml");
-  }
 
   async function openPath(path: string) {
     const res = await OpenFile(path);
@@ -898,7 +474,7 @@
   }
 
   function clearActionEditorTab() {
-    const tab = actionEditor();
+    const tab = activeEditor();
     if (!tab || !tab.value) {
       return;
     }
@@ -906,17 +482,7 @@
     setEditorValue(tab.id, "");
     outputValue = "";
     errorPosition = null;
-  }
-
-  function compressJsonContent(content: string): string {
-    return JSON.stringify(JSON.parse(content));
-  }
-
-  function compressXmlContent(content: string): string {
-    return content
-      .replace(/>\s+</g, "><")
-      .replace(/\n/g, "")
-      .trim();
+    comparePopupOpen = false;
   }
 
   function runCompress() {
@@ -1018,25 +584,12 @@
         return;
       }
 
-      const id = makeId();
-      const diffTab: DiffTab = {
-        id,
-        kind: "diff",
-        sourceEditorId: tab.id,
-        title: t("diffTabTitle", { name: tab.title }),
-        lang: tab.lang,
-        originalValue: tab.value,
-        value: clipboardValue
-      };
-
-      const activeIndex = tabs.findIndex((item) => item.id === activeId);
-      const insertIndex = activeIndex === -1 ? tabs.length : activeIndex + 1;
-      tabs = [
-        ...tabs.slice(0, insertIndex),
-        diffTab,
-        ...tabs.slice(insertIndex)
-      ];
-      activeId = id;
+      comparePopupTitle = t("comparePopupTitle", { name: tab.title });
+      comparePopupOriginal = tab.value;
+      comparePopupClipboard = clipboardValue;
+      comparePopupLanguage = tab.lang;
+      comparePopupKey += 1;
+      comparePopupOpen = true;
       outputValue = tab.value;
       status = { kind: "ok", message: t("diffCreated") };
     } catch (error) {
@@ -1126,464 +679,18 @@
   });
 </script>
 
-<style>
-  .root {
-    --toolbar-button-radius: 8px;
-    --ui-font: "Inter", "Segoe UI", system-ui, sans-serif;
-    --pref-dialog-bg: rgba(248, 250, 254, 0.95);
-    --pref-dialog-color: #1f2430;
-    --pref-border-color: #c5cfdf;
-    --pref-select-bg: #ffffff;
-    --pref-select-border: #bdc8da;
-    --pref-button-bg: linear-gradient(180deg, #ffffff 0%, #edf2fa 100%);
-
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    background: #edf0f3;
-    color: #1f1f1f;
-    font-family: var(--ui-font);
-    padding: 0;
-    box-sizing: border-box;
-    overflow: hidden;
-  }
-
-  .root.platform-macos {
-    --toolbar-button-radius: 999px;
-    --ui-font: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    background: #e7ecf4;
-  }
-
-  .root.platform-windows {
-    --toolbar-button-radius: 6px;
-    --ui-font: "Segoe UI", "Inter", Arial, sans-serif;
-    background: #e4ebf7;
-  }
-
-  .root.platform-linux {
-    --toolbar-button-radius: 6px;
-    --ui-font: "Ubuntu", "Cantarell", "Noto Sans", "Segoe UI", sans-serif;
-    background: #e9ebef;
-  }
-
-
-  .root.theme-dark {
-    background: #141922;
-    color: #e7ecf5;
-    --pref-dialog-bg: rgba(30, 39, 56, 0.98);
-    --pref-dialog-color: #e7ecf5;
-    --pref-border-color: #4f607f;
-    --pref-select-bg: #1f2a3c;
-    --pref-select-border: #536685;
-    --pref-button-bg: linear-gradient(180deg, #334158 0%, #243145 100%);
-  }
-
-  .root.theme-dark .toolbar {
-    border-bottom: 1px solid rgba(104, 122, 156, 0.55);
-    background: rgba(27, 34, 48, 0.92);
-  }
-
-  .root.theme-dark .toolbar button {
-    border: 1px solid #4f607f;
-    background: linear-gradient(180deg, #334158 0%, #243145 100%);
-    color: #e7ecf5;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  }
-
-  .root.theme-dark .toolbar button:hover:enabled {
-    background: linear-gradient(180deg, #3a4b66 0%, #2b3a51 100%);
-    border-color: #6e82a6;
-  }
-
-  .root.theme-dark .toolbar button:active:enabled {
-    background: linear-gradient(180deg, #25344a 0%, #1f2d41 100%);
-  }
-
-  .root.theme-dark .tabs {
-    background: #1b2433;
-    border-bottom: 1px solid rgba(94, 112, 146, 0.58);
-  }
-
-  .root.theme-dark .tab {
-    border-color: #4f607f;
-    background: linear-gradient(180deg, #2d3a50 0%, #253245 100%);
-    color: #c8d2e4;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  }
-
-  .root.theme-dark .tab:hover {
-    background: linear-gradient(180deg, #374a64 0%, #2b3a51 100%);
-  }
-
-  .root.theme-dark .tab.active {
-    background: linear-gradient(180deg, #3b4f6f 0%, #31455f 100%);
-    border-color: #6880ab;
-    color: #eef3ff;
-    box-shadow: inset 0 2px 0 rgba(160, 188, 234, 0.18);
-  }
-
-  .root.theme-dark .tab-close:hover {
-    background: rgba(177, 200, 235, 0.2);
-  }
-
-  .root.theme-dark .tab-new {
-    border-color: #4f607f;
-    background: linear-gradient(180deg, #2d3a50 0%, #253245 100%);
-    color: #c8d2e4;
-  }
-
-  .root.theme-dark .tab-new:hover {
-    background: linear-gradient(180deg, #3a4b66 0%, #2b3a51 100%);
-    color: #eff4ff;
-  }
-
-  .root.theme-dark .sidebyside {
-    background: rgba(20, 27, 38, 0.88);
-  }
-
-  .root.theme-dark .editor,
-  .root.theme-dark .output {
-    border: 1px solid #4f607f;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  }
-
-  .root.theme-dark .diff-funnel {
-    border: 1px solid rgba(111, 140, 192, 0.45);
-    background: linear-gradient(180deg, rgba(89, 122, 175, 0.28), rgba(89, 122, 175, 0.14));
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
-  }
-
-  .root.theme-dark .diff-funnel-icon {
-    background: rgba(104, 136, 190, 0.92);
-    color: #f4f8ff;
-  }
-
-  .root.theme-dark .hint {
-    color: #aebad0;
-  }
-
-  .root.theme-dark .footer {
-    border-top: 1px solid rgba(86, 104, 136, 0.75);
-    background: rgba(24, 31, 44, 0.92);
-  }
-
-  .root.theme-dark .status.info { color: #8cb6ff; }
-  .root.theme-dark .status.ok { color: #7ed39a; }
-  .root.theme-dark .status.error { color: #ff8e9b; }
-
-
-  .toolbar {
-    padding: 0;
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    flex-wrap: wrap;
-    border-bottom: 1px solid rgba(189, 198, 213, 0.7);
-    background: rgba(247, 249, 252, 0.76);
-  }
-
-  .toolbar button {
-    padding: 7px 14px;
-    border-radius: var(--toolbar-button-radius);
-    border: 1px solid #c2cad8;
-    background: linear-gradient(180deg, #ffffff 0%, #e9edf4 100%);
-    color: #232a36;
-    font-size: 0.85rem;
-    font-weight: 500;
-    line-height: 1.2;
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.85),
-      0 1px 2px rgba(40, 52, 70, 0.12);
-    transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
-    cursor: pointer;
-  }
-
-
-  .button-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    margin-right: 6px;
-    font-size: 0.95em;
-    line-height: 1;
-  }
-
-  .toolbar button:hover:enabled {
-    background: linear-gradient(180deg, #ffffff 0%, #e6ecf5 100%);
-    border-color: #aeb8cb;
-  }
-
-  .toolbar button:active:enabled {
-    transform: translateY(1px);
-    background: linear-gradient(180deg, #e5ebf5 0%, #f8faff 100%);
-  }
-
-  .toolbar button[aria-label] {
-    min-width: 40px;
-    padding-left: 10px;
-    padding-right: 10px;
-  }
-
-  .toolbar button[aria-label] .button-icon {
-    margin-right: 0;
-    font-size: 1.1rem;
-  }
-
-  .tabs {
-    display: flex;
-    gap: 6px;
-    padding: 8px 10px 0;
-    flex-wrap: wrap;
-    background: #edf1f7;
-    border-bottom: 1px solid rgba(189, 198, 213, 0.55);
-  }
-
-  .tab {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 14px 8px 10px;
-    border: 1px solid #ccd3e1;
-    border-bottom: 0;
-    border-radius: 10px 10px 0 0;
-    background: linear-gradient(180deg, #edf1f7 0%, #dde4ee 100%);
-    color: #4d5665;
-    cursor: pointer;
-    max-width: 280px;
-    text-align: left;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
-  }
-
-  .tab:hover {
-    background: linear-gradient(180deg, #f7faff 0%, #e8edf6 100%);
-  }
-
-  .tab.active {
-    background: linear-gradient(180deg, #ffffff 0%, #f7f9fc 100%);
-    border-color: #bcc8dc;
-    color: #1e2633;
-    box-shadow:
-      0 -1px 0 rgba(255, 255, 255, 0.85),
-      inset 0 2px 0 rgba(84, 115, 171, 0.18);
-  }
-
-  .tab-close {
-    border: none;
-    background: transparent;
-    color: inherit;
-    border-radius: 4px;
-    width: 18px;
-    height: 18px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-    font-size: 1rem;
-    opacity: 0.75;
-    cursor: pointer;
-  }
-
-  .tab-close:hover {
-    background: rgba(43, 58, 84, 0.12);
-    opacity: 1;
-    font-weight: bolder;
-    font-size: larger;
-  }
-
-  .tab-title {
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-
-
-  .tab-new {
-    border: 1px solid #bcc8dc;
-    border-bottom: 0;
-    border-radius: 10px 10px 0 0;
-    margin-left: 4px;
-    width: 28px;
-    height: 30px;
-    background: linear-gradient(180deg, #edf1f7 0%, #dde4ee 100%);
-    color: #4f5868;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1rem;
-    cursor: pointer;
-  }
-
-  .tab-new:hover {
-    background: linear-gradient(180deg, #ffffff 0%, #e8eef8 100%);
-    color: #1f2632;
-  }
-
-  .sidebyside {
-    display: flex;
-    gap: 8px;
-    flex: 1;
-    padding: 10px;
-    min-height: 0;
-    background: rgba(238, 242, 248, 0.76);
-  }
-
-  .editor {
-    text-align: left;
-    flex: 1;
-    border: 1px solid #c5cfdf;
-    border-radius: 12px;
-    min-width: 0;
-    min-height: 0;
-    overflow: hidden;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
-  }
-
-  .output {
-    text-align: left;
-    flex: 1;
-    min-width: 0;
-    min-height: 0;
-    border: 1px solid #c5cfdf;
-    border-radius: 12px;
-    overflow: hidden;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
-  }
-
-  .diff-only {
-    flex: 1 1 100%;
-  }
-
-  .diff-shell {
-    position: relative;
-    width: 100%;
-    height: 100%;
-  }
-
-  .diff-funnel {
-    position: absolute;
-    top: 10px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 28px;
-    height: calc(100% - 20px);
-    pointer-events: none;
-    border-radius: 999px;
-    border: 1px solid rgba(130, 158, 201, 0.45);
-    background: linear-gradient(180deg, rgba(95, 133, 193, 0.2), rgba(95, 133, 193, 0.08));
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
-    display: flex;
-    justify-content: center;
-  }
-
-  .diff-funnel-icon {
-    margin-top: 8px;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: rgba(62, 94, 151, 0.85);
-    color: #f4f8ff;
-    font-size: 0.75rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .hint {
-    margin-left: auto;
-    opacity: 0.72;
-    font-size: 0.85rem;
-    color: #4b5567;
-  }
-
-  .footer {
-    border-top: 1px solid rgba(192, 202, 217, 0.8);
-    background: rgba(245, 247, 252, 0.82);
-  }
-
-  .status {
-    padding: 6px 10px;
-    font-size: 0.85rem;
-  }
-
-  .status.info { color: #35537e; }
-  .status.ok { color: #1f6b35; }
-  .status.error { color: #9f2432; }
-  button:disabled { opacity: 0.6; cursor: not-allowed; }
-
-  .preferences-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(19, 27, 38, 0.35);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 20;
-  }
-
-  .preferences-dialog {
-    background: var(--pref-dialog-bg);
-    color: var(--pref-dialog-color);
-    border: 1px solid var(--pref-border-color);
-    border-radius: 12px;
-    width: min(360px, calc(100vw - 32px));
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .preferences-dialog h2 {
-    margin: 0;
-    font-size: 1rem;
-  }
-
-  .preferences-dialog select {
-    background: var(--pref-select-bg);
-    color: var(--pref-dialog-color);
-    border: 1px solid var(--pref-select-border);
-    border-radius: 6px;
-    padding: 6px 12px;
-    font-size: 0.85rem;
-    line-height: 1.2;
-  }
-
-  .preferences-dialog button {
-    align-self: flex-end;
-    padding: 6px 12px;
-    border-radius: 999px;
-    border: 1px solid var(--pref-select-border);
-    background: var(--pref-button-bg);
-    color: var(--pref-dialog-color);
-    font-size: 0.85rem;
-    line-height: 1.2;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-    transition: background 0.2s ease, border-color 0.2s ease;
-  }
-
-  @media (max-width: 980px) {
-    .sidebyside {
-      flex-direction: column;
-    }
-
-    .editor,
-    .output {
-      flex: 1;
-    }
-  }
-</style>
 
 <div class="root platform-{appPlatform} theme-{effectiveTheme}">
   <div class="toolbar">
-      <button on:click={runFormat} disabled={!supportsActions() || isProcessing || !actionEditor()}><span class="button-icon" aria-hidden="true">✨</span>{t("actionFormatApply")}</button>
-      <button on:click={runValidate} disabled={!supportsActions() || isProcessing || !actionEditor()}><span class="button-icon" aria-hidden="true">✅</span>{t("actionValidate")}</button>
-      <button on:click={undoActiveTab} disabled={!canUndoActive() || isProcessing || !actionEditor()} aria-label={t("actionUndo")} title={t("actionUndo")}><span class="button-icon" aria-hidden="true">↶</span></button>
-      <button on:click={redoActiveTab} disabled={!canRedoActive() || isProcessing || !actionEditor()} aria-label={t("actionRedo")} title={t("actionRedo")}><span class="button-icon" aria-hidden="true">↷</span></button>
-      <button on:click={clearActionEditorTab} disabled={!(actionEditor()?.value) || isProcessing}><span class="button-icon" aria-hidden="true">🧹</span>{t("actionClearEditor")}</button>
-      <button on:click={runCompress} disabled={!outputValue || isProcessing}><span class="button-icon" aria-hidden="true">🗜</span>{t("actionCompressOutput")}</button>
-      <button on:click={copyOutputToEditor} disabled={!outputValue || !actionEditor()}><span class="button-icon" aria-hidden="true">⤴</span>{t("actionOutputToEditor")}</button>
-      <button on:click={copyOutputToClipboard} disabled={!outputValue || !actionEditor()}><span class="button-icon" aria-hidden="true">📋</span>{t("actionCopyOutput")}</button>
-      <button on:click={compareWithClipboard} disabled={!actionEditor() || isProcessing}><span class="button-icon" aria-hidden="true">🆚</span>{t("actionCompareClipboard")}</button>
+      <button on:click={runFormat} disabled={toolbarDisabled.format}><span class="button-icon" aria-hidden="true">✨</span>{t("actionFormatApply")}</button>
+      <button on:click={runValidate} disabled={toolbarDisabled.validate}><span class="button-icon" aria-hidden="true">✅</span>{t("actionValidate")}</button>
+      <button on:click={undoActiveTab} disabled={toolbarDisabled.undo} aria-label={t("actionUndo")} title={t("actionUndo")}><span class="button-icon" aria-hidden="true">↶</span></button>
+      <button on:click={redoActiveTab} disabled={toolbarDisabled.redo} aria-label={t("actionRedo")} title={t("actionRedo")}><span class="button-icon" aria-hidden="true">↷</span></button>
+      <button on:click={clearActionEditorTab} disabled={toolbarDisabled.clear}><span class="button-icon" aria-hidden="true">🧹</span>{t("actionClearEditor")}</button>
+      <button on:click={runCompress} disabled={toolbarDisabled.compress}><span class="button-icon" aria-hidden="true">🗜</span>{t("actionCompressOutput")}</button>
+      <button on:click={copyOutputToEditor} disabled={toolbarDisabled.outputToEditor}><span class="button-icon" aria-hidden="true">⤴</span>{t("actionOutputToEditor")}</button>
+      <button on:click={copyOutputToClipboard} disabled={toolbarDisabled.copyOutput}><span class="button-icon" aria-hidden="true">📋</span>{t("actionCopyOutput")}</button>
+      <button on:click={compareWithClipboard} disabled={toolbarDisabled.compareClipboard}><span class="button-icon" aria-hidden="true">🆚</span>{t("actionCompareClipboard")}</button>
       <div class="hint">{t("dragAndDropHint")}</div>
     </div>
 
@@ -1620,35 +727,13 @@
       </button>
     </div>
 
-    {#if active().kind === "diff"}
-      <div class="sidebyside">
-        <div
-          class="editor diff-only"
-          role="region"
-          aria-label={t("editorRegionLabel")}
-        >
-          <div class="diff-shell">
-            <div class="diff-funnel" aria-hidden="true">
-              <span class="diff-funnel-icon">⏷</span>
-            </div>
-            <MonacoEditor
-              mode="diff"
-              value={active().value}
-              originalValue={(active() as DiffTab).originalValue}
-              language={active().lang}
-              readonly={false}
-              onChange={setActiveDiffValue}
-            />
-          </div>
-        </div>
-      </div>
-    {:else}
-      <div class="sidebyside">
-        <div
-          class="editor"
-          role="region"
-          aria-label={t("editorRegionLabel")}
-        >
+    <div class="sidebyside">
+      <div
+        class="editor"
+        role="region"
+        aria-label={t("editorRegionLabel")}
+      >
+        {#key activeId}
           <MonacoEditor
             value={active().value}
             language={active().lang}
@@ -1656,20 +741,50 @@
             onChange={setActiveValue}
             onDropFile={handleLocalFileDrop}
           />
-        </div>
-        <div class="output">
+        {/key}
+      </div>
+      <div class="output">
+        {#key `output-${activeId}`}
           <MonacoEditor
             value={outputValue}
-            language={activeEditor()?.lang ?? sourceEditorForDiff()?.lang ?? active().lang}
+            language={activeEditor()?.lang ?? active().lang}
             readonly={true}
           />
-        </div>
+        {/key}
       </div>
-    {/if}
+    </div>
     <div class="footer">
       <div class="status {status.kind}">{status.message}</div>
     </div>
 </div>
+
+{#if comparePopupOpen}
+  <div class="compare-backdrop">
+    <div class="compare-dialog" role="dialog" tabindex="-1" aria-modal="true" aria-label={comparePopupTitle}>
+      <div class="compare-header">
+        <h2>{comparePopupTitle}</h2>
+        <button class="compare-close" type="button" on:click={() => (comparePopupOpen = false)}><span class="button-icon" aria-hidden="true">✕</span>{t("close")}</button>
+      </div>
+      <div class="compare-body">
+        <div class="diff-shell">
+          <div class="diff-funnel" aria-hidden="true">
+            <span class="diff-funnel-icon">⏷</span>
+          </div>
+          {#key comparePopupKey}
+            <MonacoEditor
+              mode="diff"
+              originalValue={comparePopupOriginal}
+              value={comparePopupClipboard}
+              language={comparePopupLanguage}
+              readonly={true}
+              originalEditable={true}
+            />
+          {/key}
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
 
 {#if preferencesOpen}
   <div class="preferences-backdrop">

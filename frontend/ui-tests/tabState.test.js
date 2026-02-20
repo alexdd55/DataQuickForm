@@ -81,3 +81,44 @@ test("getActionEditorTab returns source editor when diff tab is active", () => {
   assert.ok(source);
   assert.equal(source.id, "editor-a");
 });
+
+test("simulates switching between editor and diff tabs without losing tab/source mapping", () => {
+  const diffA = {
+    id: "diff-a",
+    kind: "diff",
+    sourceEditorId: "editor-a",
+    title: "Diff A",
+    lang: "json",
+    originalValue: "{}",
+    value: "{\"clipboard\":1}"
+  };
+  const diffB = {
+    id: "diff-b",
+    kind: "diff",
+    sourceEditorId: "editor-b",
+    title: "Diff B",
+    lang: "xml",
+    originalValue: "<a/>",
+    value: "<a>clipboard</a>"
+  };
+  const tabs = [editorA, diffA, editorB, diffB];
+
+  assert.equal(getActiveEditorTab(tabs, "editor-a")?.id, "editor-a");
+  assert.equal(getActionEditorTab(tabs, "editor-a")?.id, "editor-a");
+  assert.equal(getSourceEditorTabForDiff(tabs, "editor-a"), null);
+
+  assert.equal(getActiveEditorTab(tabs, "diff-a"), null);
+  assert.equal(getActionEditorTab(tabs, "diff-a")?.id, "editor-a");
+  assert.equal(getSourceEditorTabForDiff(tabs, "diff-a")?.id, "editor-a");
+
+  assert.equal(getActiveEditorTab(tabs, "editor-b")?.id, "editor-b");
+  assert.equal(getActionEditorTab(tabs, "editor-b")?.id, "editor-b");
+  assert.equal(getSourceEditorTabForDiff(tabs, "editor-b"), null);
+
+  assert.equal(getActiveEditorTab(tabs, "diff-b"), null);
+  assert.equal(getActionEditorTab(tabs, "diff-b")?.id, "editor-b");
+  assert.equal(getSourceEditorTabForDiff(tabs, "diff-b")?.id, "editor-b");
+
+  assert.equal(getActiveTab(tabs, "missing-id").id, "editor-a");
+  assert.equal(getActionEditorTab(tabs, "missing-id")?.id, "editor-a");
+});

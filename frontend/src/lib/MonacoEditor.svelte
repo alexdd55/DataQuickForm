@@ -11,6 +11,7 @@
   export let onChange: (v: string) => void = () => {};
   export let onDropFile: ((event: DragEvent) => void) | null = null;
   export let readonly = false;
+  export let originalEditable = false;
   export let mode: "code" | "diff" = "code";
 
   let el: HTMLDivElement;
@@ -19,6 +20,16 @@
   let diffOriginalModel: Monaco.editor.ITextModel | null = null;
   let diffModifiedModel: Monaco.editor.ITextModel | null = null;
   let errorDecorations: string[] = [];
+  let isApplyingExternalUpdate = false;
+
+  function withExternalUpdateGuard(run: () => void) {
+    isApplyingExternalUpdate = true;
+    try {
+      run();
+    } finally {
+      isApplyingExternalUpdate = false;
+    }
+  }
 
   onMount(() => {
     let sub: Monaco.IDisposable | null = null;
@@ -72,10 +83,10 @@
           diffEditor = monaco.editor.createDiffEditor(el, {
             automaticLayout: true,
             minimap: { enabled: false },
-            wordWrap: "on",
+            wordWrap: "off",
             fontSize: 14,
             readOnly: readonly,
-            originalEditable: !readonly,
+            originalEditable,
             renderSideBySide: true
           });
 
@@ -84,7 +95,13 @@
           diffEditor.setModel({ original: diffOriginalModel, modified: diffModifiedModel });
 
           diffSub = diffEditor.getModifiedEditor().onDidChangeModelContent(() => {
-            onChange(diffEditor!.getModifiedEditor().getValue());
+            if (isApplyingExternalUpdate) {
+              return;
+            }
+            const nextValue = diffEditor!.getModifiedEditor().getValue();
+            if (nextValue !== value) {
+              onChange(nextValue);
+            }
           });
         } else {
           editor = monaco.editor.create(el, {
@@ -98,7 +115,13 @@
           });
 
           sub = editor.onDidChangeModelContent(() => {
-            onChange(editor!.getValue());
+            if (isApplyingExternalUpdate) {
+              return;
+            }
+            const nextValue = editor!.getValue();
+            if (nextValue !== value) {
+              onChange(nextValue);
+            }
           });
         }
 
@@ -134,22 +157,30 @@
 
   $: if (editor) {
     const model = editor.getModel();
-    if (model && model.getValue() !== value) editor.setValue(value);
+    if (model && model.getValue() !== value) {
+      withExternalUpdateGuard(() => {
+        editor.setValue(value);
+      });
+    }
     if (model) monaco.editor.setModelLanguage(model, language);
     editor.updateOptions({ readOnly: readonly });
   }
 
   $: if (diffEditor && diffOriginalModel && diffModifiedModel) {
     if (diffOriginalModel.getValue() !== originalValue) {
-      diffOriginalModel.setValue(originalValue);
+      withExternalUpdateGuard(() => {
+        diffOriginalModel.setValue(originalValue);
+      });
     }
     if (diffModifiedModel.getValue() !== value) {
-      diffModifiedModel.setValue(value);
+      withExternalUpdateGuard(() => {
+        diffModifiedModel.setValue(value);
+      });
     }
 
     monaco.editor.setModelLanguage(diffOriginalModel, language);
     monaco.editor.setModelLanguage(diffModifiedModel, language);
-    diffEditor.updateOptions({ readOnly: readonly, originalEditable: !readonly });
+    diffEditor.updateOptions({ readOnly: readonly, originalEditable, wordWrap: "off" });
   }
 
   $: if (editor && monaco) {
