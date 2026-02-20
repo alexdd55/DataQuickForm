@@ -1410,8 +1410,8 @@
             </div>
             <MonacoEditor
               mode="diff"
-              value={active().value}
-              originalValue={(active() as DiffTab).originalValue}
+              value={(active() as DiffTab).originalValue}
+              originalValue={active().value}
               language={active().lang}
               readonly={false}
               onChange={setActiveDiffValue}

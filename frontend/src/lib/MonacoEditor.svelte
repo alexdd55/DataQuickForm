@@ -66,7 +66,8 @@
           minimap: { enabled: false },
           wordWrap: "on",
           fontSize: 14,
-          readOnly: readonly,
+          readOnly: true,
+          originalEditable: !readonly,
           renderSideBySide: true
         });
 
@@ -74,8 +75,8 @@
         diffModifiedModel = monaco.editor.createModel(value, language);
         diffEditor.setModel({ original: diffOriginalModel, modified: diffModifiedModel });
 
-        diffSub = diffEditor.getModifiedEditor().onDidChangeModelContent(() => {
-          onChange(diffEditor!.getModifiedEditor().getValue());
+        diffSub = diffEditor.getOriginalEditor().onDidChangeModelContent(() => {
+          onChange(diffEditor!.getOriginalEditor().getValue());
         });
       } else {
         editor = monaco.editor.create(el, {
@@ -128,7 +129,7 @@
 
     monaco.editor.setModelLanguage(diffOriginalModel, language);
     monaco.editor.setModelLanguage(diffModifiedModel, language);
-    diffEditor.updateOptions({ readOnly: readonly });
+    diffEditor.updateOptions({ readOnly: true, originalEditable: !readonly });
   }
 
   $: if (editor && monaco) {
