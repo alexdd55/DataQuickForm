@@ -897,24 +897,14 @@
     ];
   }
 
-  function clearActiveTab() {
-    const currentTab = active();
-
-    if (currentTab.kind === "diff") {
-      if (!currentTab.value) {
-        return;
-      }
-
-      setActiveDiffValue("");
-      errorPosition = null;
+  function clearActionEditorTab() {
+    const tab = actionEditor();
+    if (!tab || !tab.value) {
       return;
     }
 
-    if (!currentTab.value) {
-      return;
-    }
-
-    setEditorValue(currentTab.id, "");
+    setEditorValue(tab.id, "");
+    outputValue = "";
     errorPosition = null;
   }
 
@@ -979,7 +969,6 @@
         const helper = document.createElement("textarea");
         helper.value = outputValue;
         helper.setAttribute("readonly", "true");
-        helper.setAttribute("name", "h");
         helper.style.position = "fixed";
         helper.style.opacity = "0";
         document.body.appendChild(helper);
@@ -1005,8 +994,6 @@
     if (!tab) {
       return;
     }
-
-    const comparisonValue = outputValue || tab.value;
 
     try {
       let clipboardValue = "";
@@ -1038,8 +1025,8 @@
         sourceEditorId: tab.id,
         title: t("diffTabTitle", { name: tab.title }),
         lang: tab.lang,
-        originalValue:  clipboardValue,
-        value: comparisonValue
+        originalValue: tab.value,
+        value: clipboardValue
       };
 
       const activeIndex = tabs.findIndex((item) => item.id === activeId);
@@ -1050,7 +1037,7 @@
         ...tabs.slice(insertIndex)
       ];
       activeId = id;
-      outputValue = comparisonValue;
+      outputValue = tab.value;
       status = { kind: "ok", message: t("diffCreated") };
     } catch (error) {
       status = { kind: "error", message: t("clipboardReadFailed", { error: (error as Error).message }) };
@@ -1123,6 +1110,9 @@
         EventsOn("menu:open", openFileFromDialog);
         EventsOn("menu:save", saveActiveFile);
         EventsOn("menu:saveas", saveActiveFileAs);
+        EventsOn("menu:format", runFormat);
+        EventsOn("menu:validate", runValidate);
+        EventsOn("menu:clear", clearActionEditorTab);
         EventsOn("menu:about", showAbout);
         EventsOn("menu:preferences", showPreferences);
       } catch (error) {
@@ -1238,8 +1228,8 @@
   }
 
   .root.theme-dark .tab-new {
-    border-color: transparent;
-    background: transparent;
+    border-color: #4f607f;
+    background: linear-gradient(180deg, #2d3a50 0%, #253245 100%);
     color: #c8d2e4;
   }
 
@@ -1409,12 +1399,13 @@
 
 
   .tab-new {
-    background-color: transparent;
+    border: 1px solid #bcc8dc;
     border-bottom: 0;
-    border-radius: 10px;
+    border-radius: 10px 10px 0 0;
     margin-left: 4px;
     width: 28px;
-    height: 33px;
+    height: 30px;
+    background: linear-gradient(180deg, #edf1f7 0%, #dde4ee 100%);
     color: #4f5868;
     display: inline-flex;
     align-items: center;
@@ -1457,7 +1448,6 @@
     border-radius: 12px;
     overflow: hidden;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
-    background-color: grey;
   }
 
   .diff-only {
@@ -1589,7 +1579,7 @@
       <button on:click={runValidate} disabled={!supportsActions() || isProcessing || !actionEditor()}><span class="button-icon" aria-hidden="true">✅</span>{t("actionValidate")}</button>
       <button on:click={undoActiveTab} disabled={!canUndoActive() || isProcessing || !actionEditor()} aria-label={t("actionUndo")} title={t("actionUndo")}><span class="button-icon" aria-hidden="true">↶</span></button>
       <button on:click={redoActiveTab} disabled={!canRedoActive() || isProcessing || !actionEditor()} aria-label={t("actionRedo")} title={t("actionRedo")}><span class="button-icon" aria-hidden="true">↷</span></button>
-      <button on:click={clearActiveTab} disabled={!active().value || isProcessing}><span class="button-icon" aria-hidden="true">🧹</span>{t("actionClearEditor")}</button>
+      <button on:click={clearActionEditorTab} disabled={!(actionEditor()?.value) || isProcessing}><span class="button-icon" aria-hidden="true">🧹</span>{t("actionClearEditor")}</button>
       <button on:click={runCompress} disabled={!outputValue || isProcessing}><span class="button-icon" aria-hidden="true">🗜</span>{t("actionCompressOutput")}</button>
       <button on:click={copyOutputToEditor} disabled={!outputValue || !actionEditor()}><span class="button-icon" aria-hidden="true">⤴</span>{t("actionOutputToEditor")}</button>
       <button on:click={copyOutputToClipboard} disabled={!outputValue || !actionEditor()}><span class="button-icon" aria-hidden="true">📋</span>{t("actionCopyOutput")}</button>
@@ -1641,16 +1631,14 @@
             <div class="diff-funnel" aria-hidden="true">
               <span class="diff-funnel-icon">⏷</span>
             </div>
-            {#key activeId}
-              <MonacoEditor
-                mode="diff"
-                value={active().value}
-                originalValue={(active() as DiffTab).originalValue}
-                language={active().lang}
-                readonly={false}
-                onChange={setActiveDiffValue}
-              />
-            {/key}
+            <MonacoEditor
+              mode="diff"
+              value={active().value}
+              originalValue={(active() as DiffTab).originalValue}
+              language={active().lang}
+              readonly={false}
+              onChange={setActiveDiffValue}
+            />
           </div>
         </div>
       </div>
@@ -1661,24 +1649,20 @@
           role="region"
           aria-label={t("editorRegionLabel")}
         >
-          {#key activeId}
-            <MonacoEditor
-              value={active().value}
-              language={active().lang}
-              errorPosition={errorPosition}
-              onChange={setActiveValue}
-              onDropFile={handleLocalFileDrop}
-            />
-          {/key}
+          <MonacoEditor
+            value={active().value}
+            language={active().lang}
+            errorPosition={errorPosition}
+            onChange={setActiveValue}
+            onDropFile={handleLocalFileDrop}
+          />
         </div>
         <div class="output">
-          {#key `${activeId}-output`}
-            <MonacoEditor
-              value={outputValue}
-              language={activeEditor()?.lang ?? sourceEditorForDiff()?.lang ?? active().lang}
-              readonly={true}
-            />
-          {/key}
+          <MonacoEditor
+            value={outputValue}
+            language={activeEditor()?.lang ?? sourceEditorForDiff()?.lang ?? active().lang}
+            readonly={true}
+          />
         </div>
       </div>
     {/if}
