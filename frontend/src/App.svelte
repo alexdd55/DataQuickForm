@@ -507,6 +507,7 @@
   const sourceEditorForDiff = (): EditorTab | null => getSourceEditorTabForDiff(tabs, activeId);
   const actionEditor = (): EditorTab | null => getActionEditorTab(tabs, activeId);
 
+
   function setEditorValue(editorId: string, v: string, options: { recordUndo?: boolean } = {}) {
     const { recordUndo = true } = options;
     const index = tabs.findIndex((t) => t.id === editorId);
