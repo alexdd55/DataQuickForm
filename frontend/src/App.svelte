@@ -898,12 +898,23 @@
   }
 
   function clearActiveTab() {
-    const tab = actionEditor();
-    if (!tab) {
+    const currentTab = active();
+
+    if (currentTab.kind === "diff") {
+      if (!currentTab.value) {
+        return;
+      }
+
+      setActiveDiffValue("");
+      errorPosition = null;
       return;
     }
 
-    setEditorValue(tab.id, "");
+    if (!currentTab.value) {
+      return;
+    }
+
+    setEditorValue(currentTab.id, "");
     errorPosition = null;
   }
 
@@ -994,6 +1005,8 @@
       return;
     }
 
+    const comparisonValue = outputValue || tab.value;
+
     try {
       let clipboardValue = "";
       let read = false;
@@ -1024,7 +1037,7 @@
         sourceEditorId: tab.id,
         title: t("diffTabTitle", { name: tab.title }),
         lang: tab.lang,
-        originalValue: tab.value,
+        originalValue: comparisonValue,
         value: clipboardValue
       };
 
@@ -1036,7 +1049,7 @@
         ...tabs.slice(insertIndex)
       ];
       activeId = id;
-      outputValue = tab.value;
+      outputValue = comparisonValue;
       status = { kind: "ok", message: t("diffCreated") };
     } catch (error) {
       status = { kind: "error", message: t("clipboardReadFailed", { error: (error as Error).message }) };
@@ -1575,7 +1588,7 @@
       <button on:click={runValidate} disabled={!supportsActions() || isProcessing || !actionEditor()}><span class="button-icon" aria-hidden="true">✅</span>{t("actionValidate")}</button>
       <button on:click={undoActiveTab} disabled={!canUndoActive() || isProcessing || !actionEditor()} aria-label={t("actionUndo")} title={t("actionUndo")}><span class="button-icon" aria-hidden="true">↶</span></button>
       <button on:click={redoActiveTab} disabled={!canRedoActive() || isProcessing || !actionEditor()} aria-label={t("actionRedo")} title={t("actionRedo")}><span class="button-icon" aria-hidden="true">↷</span></button>
-      <button on:click={clearActiveTab} disabled={!actionEditor() || !actionEditor()?.value || isProcessing}><span class="button-icon" aria-hidden="true">🧹</span>{t("actionClearEditor")}</button>
+      <button on:click={clearActiveTab} disabled={!active().value || isProcessing}><span class="button-icon" aria-hidden="true">🧹</span>{t("actionClearEditor")}</button>
       <button on:click={runCompress} disabled={!outputValue || isProcessing}><span class="button-icon" aria-hidden="true">🗜</span>{t("actionCompressOutput")}</button>
       <button on:click={copyOutputToEditor} disabled={!outputValue || !actionEditor()}><span class="button-icon" aria-hidden="true">⤴</span>{t("actionOutputToEditor")}</button>
       <button on:click={copyOutputToClipboard} disabled={!outputValue || !actionEditor()}><span class="button-icon" aria-hidden="true">📋</span>{t("actionCopyOutput")}</button>
@@ -1627,14 +1640,16 @@
             <div class="diff-funnel" aria-hidden="true">
               <span class="diff-funnel-icon">⏷</span>
             </div>
-            <MonacoEditor
-              mode="diff"
-              value={active().value}
-              originalValue={(active() as DiffTab).originalValue}
-              language={active().lang}
-              readonly={false}
-              onChange={setActiveDiffValue}
-            />
+            {#key activeId}
+              <MonacoEditor
+                mode="diff"
+                value={active().value}
+                originalValue={(active() as DiffTab).originalValue}
+                language={active().lang}
+                readonly={false}
+                onChange={setActiveDiffValue}
+              />
+            {/key}
           </div>
         </div>
       </div>
@@ -1645,20 +1660,24 @@
           role="region"
           aria-label={t("editorRegionLabel")}
         >
-          <MonacoEditor
-            value={active().value}
-            language={active().lang}
-            errorPosition={errorPosition}
-            onChange={setActiveValue}
-            onDropFile={handleLocalFileDrop}
-          />
+          {#key activeId}
+            <MonacoEditor
+              value={active().value}
+              language={active().lang}
+              errorPosition={errorPosition}
+              onChange={setActiveValue}
+              onDropFile={handleLocalFileDrop}
+            />
+          {/key}
         </div>
         <div class="output">
-          <MonacoEditor
-            value={outputValue}
-            language={activeEditor()?.lang ?? sourceEditorForDiff()?.lang ?? active().lang}
-            readonly={true}
-          />
+          {#key `${activeId}-output`}
+            <MonacoEditor
+              value={outputValue}
+              language={activeEditor()?.lang ?? sourceEditorForDiff()?.lang ?? active().lang}
+              readonly={true}
+            />
+          {/key}
         </div>
       </div>
     {/if}
