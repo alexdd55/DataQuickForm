@@ -1640,14 +1640,16 @@
             <div class="diff-funnel" aria-hidden="true">
               <span class="diff-funnel-icon">⏷</span>
             </div>
-            <MonacoEditor
-              mode="diff"
-              value={active().value}
-              originalValue={(active() as DiffTab).originalValue}
-              language={active().lang}
-              readonly={false}
-              onChange={setActiveDiffValue}
-            />
+            {#key activeId}
+              <MonacoEditor
+                mode="diff"
+                value={active().value}
+                originalValue={(active() as DiffTab).originalValue}
+                language={active().lang}
+                readonly={false}
+                onChange={setActiveDiffValue}
+              />
+            {/key}
           </div>
         </div>
       </div>
@@ -1658,20 +1660,24 @@
           role="region"
           aria-label={t("editorRegionLabel")}
         >
-          <MonacoEditor
-            value={active().value}
-            language={active().lang}
-            errorPosition={errorPosition}
-            onChange={setActiveValue}
-            onDropFile={handleLocalFileDrop}
-          />
+          {#key activeId}
+            <MonacoEditor
+              value={active().value}
+              language={active().lang}
+              errorPosition={errorPosition}
+              onChange={setActiveValue}
+              onDropFile={handleLocalFileDrop}
+            />
+          {/key}
         </div>
         <div class="output">
-          <MonacoEditor
-            value={outputValue}
-            language={activeEditor()?.lang ?? sourceEditorForDiff()?.lang ?? active().lang}
-            readonly={true}
-          />
+          {#key `${activeId}-output`}
+            <MonacoEditor
+              value={outputValue}
+              language={activeEditor()?.lang ?? sourceEditorForDiff()?.lang ?? active().lang}
+              readonly={true}
+            />
+          {/key}
         </div>
       </div>
     {/if}
