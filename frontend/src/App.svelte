@@ -898,12 +898,23 @@
   }
 
   function clearActiveTab() {
-    const tab = actionEditor();
-    if (!tab) {
+    const currentTab = active();
+
+    if (currentTab.kind === "diff") {
+      if (!currentTab.value) {
+        return;
+      }
+
+      setActiveDiffValue("");
+      errorPosition = null;
       return;
     }
 
-    setEditorValue(tab.id, "");
+    if (!currentTab.value) {
+      return;
+    }
+
+    setEditorValue(currentTab.id, "");
     errorPosition = null;
   }
 
@@ -1577,7 +1588,7 @@
       <button on:click={runValidate} disabled={!supportsActions() || isProcessing || !actionEditor()}><span class="button-icon" aria-hidden="true">✅</span>{t("actionValidate")}</button>
       <button on:click={undoActiveTab} disabled={!canUndoActive() || isProcessing || !actionEditor()} aria-label={t("actionUndo")} title={t("actionUndo")}><span class="button-icon" aria-hidden="true">↶</span></button>
       <button on:click={redoActiveTab} disabled={!canRedoActive() || isProcessing || !actionEditor()} aria-label={t("actionRedo")} title={t("actionRedo")}><span class="button-icon" aria-hidden="true">↷</span></button>
-      <button on:click={clearActiveTab} disabled={!actionEditor() || !actionEditor()?.value || isProcessing}><span class="button-icon" aria-hidden="true">🧹</span>{t("actionClearEditor")}</button>
+      <button on:click={clearActiveTab} disabled={!active().value || isProcessing}><span class="button-icon" aria-hidden="true">🧹</span>{t("actionClearEditor")}</button>
       <button on:click={runCompress} disabled={!outputValue || isProcessing}><span class="button-icon" aria-hidden="true">🗜</span>{t("actionCompressOutput")}</button>
       <button on:click={copyOutputToEditor} disabled={!outputValue || !actionEditor()}><span class="button-icon" aria-hidden="true">⤴</span>{t("actionOutputToEditor")}</button>
       <button on:click={copyOutputToClipboard} disabled={!outputValue || !actionEditor()}><span class="button-icon" aria-hidden="true">📋</span>{t("actionCopyOutput")}</button>
