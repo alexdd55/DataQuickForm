@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import MonacoEditor from "./lib/MonacoEditor.svelte";
+  import { getActiveEditorTab, getActiveTab, getSourceEditorTabForDiff } from "./lib/tabState";
+  import type { DiffTab, EditorTab, Tab } from "./lib/tabState";
   import { ClipboardGetText, ClipboardSetText, EventsOn, OnFileDrop } from "../wailsjs/runtime/runtime";
   import {
     FormatContent,
@@ -438,29 +440,6 @@
     status = { kind: "info", message: t("languageUpdated", { language: localeNames[nextLocale] }) };
   }
 
-  type BaseTab = {
-    id: string;
-    title: string;
-    lang: "json" | "xml" | "plaintext";
-  };
-
-  type EditorTab = BaseTab & {
-    kind: "editor";
-    path?: string;
-    value: string;
-    dirty: boolean;
-    undoHistory: string[];
-    redoHistory: string[];
-  };
-
-  type DiffTab = BaseTab & {
-    kind: "diff";
-    sourceEditorId: string;
-    originalValue: string;
-    value: string;
-  };
-
-  type Tab = EditorTab | DiffTab;
 
   type Status = {
     kind: "ok" | "error" | "info";
@@ -523,16 +502,9 @@
   let processingToken = 0;
   let appPlatform: AppPlatform = detectPlatform();
 
-  const active = () => tabs.find((t) => t.id === activeId) ?? tabs[0];
-  const activeEditor = (): EditorTab | null => {
-    const tab = active();
-    if (tab.kind === "editor") {
-      return tab;
-    }
-
-    const sourceEditor = tabs.find((item) => item.id === tab.sourceEditorId);
-    return sourceEditor && sourceEditor.kind === "editor" ? sourceEditor : null;
-  };
+  const active = () => getActiveTab(tabs, activeId);
+  const activeEditor = (): EditorTab | null => getActiveEditorTab(tabs, activeId);
+  const sourceEditorForDiff = (): EditorTab | null => getSourceEditorTabForDiff(tabs, activeId);
 
   function setActiveValue(v: string, options: { recordUndo?: boolean } = {}) {
     const { recordUndo = true } = options;
@@ -951,7 +923,7 @@
     }
 
     try {
-      const lang = active().lang;
+      const lang = activeEditor()?.lang ?? active().lang;
       if (lang === "json") {
         outputValue = compressJsonContent(outputValue);
       } else if (lang === "xml") {
@@ -1564,14 +1536,14 @@
 
 <div class="root platform-{appPlatform} theme-{effectiveTheme}">
   <div class="toolbar">
-      <button on:click={runFormat} disabled={!supportsActions() || isProcessing}><span class="button-icon" aria-hidden="true">✨</span>{t("actionFormatApply")}</button>
-      <button on:click={runValidate} disabled={!supportsActions() || isProcessing}><span class="button-icon" aria-hidden="true">✅</span>{t("actionValidate")}</button>
-      <button on:click={undoActiveTab} disabled={!canUndoActive() || isProcessing} aria-label={t("actionUndo")} title={t("actionUndo")}><span class="button-icon" aria-hidden="true">↶</span></button>
-      <button on:click={redoActiveTab} disabled={!canRedoActive() || isProcessing} aria-label={t("actionRedo")} title={t("actionRedo")}><span class="button-icon" aria-hidden="true">↷</span></button>
-      <button on:click={clearActiveTab} disabled={!activeEditor() || !activeEditor()?.value}><span class="button-icon" aria-hidden="true">🧹</span>{t("actionClearEditor")}</button>
+      <button on:click={runFormat} disabled={!supportsActions() || isProcessing || !activeEditor()}><span class="button-icon" aria-hidden="true">✨</span>{t("actionFormatApply")}</button>
+      <button on:click={runValidate} disabled={!supportsActions() || isProcessing || !activeEditor()}><span class="button-icon" aria-hidden="true">✅</span>{t("actionValidate")}</button>
+      <button on:click={undoActiveTab} disabled={!canUndoActive() || isProcessing || !activeEditor()} aria-label={t("actionUndo")} title={t("actionUndo")}><span class="button-icon" aria-hidden="true">↶</span></button>
+      <button on:click={redoActiveTab} disabled={!canRedoActive() || isProcessing || !activeEditor()} aria-label={t("actionRedo")} title={t("actionRedo")}><span class="button-icon" aria-hidden="true">↷</span></button>
+      <button on:click={clearActiveTab} disabled={!activeEditor() || !activeEditor()?.value || isProcessing}><span class="button-icon" aria-hidden="true">🧹</span>{t("actionClearEditor")}</button>
       <button on:click={runCompress} disabled={!outputValue || isProcessing}><span class="button-icon" aria-hidden="true">🗜</span>{t("actionCompressOutput")}</button>
-      <button on:click={copyOutputToEditor} disabled={!outputValue}><span class="button-icon" aria-hidden="true">⤴</span>{t("actionOutputToEditor")}</button>
-      <button on:click={copyOutputToClipboard} disabled={!outputValue}><span class="button-icon" aria-hidden="true">📋</span>{t("actionCopyOutput")}</button>
+      <button on:click={copyOutputToEditor} disabled={!outputValue || !activeEditor()}><span class="button-icon" aria-hidden="true">⤴</span>{t("actionOutputToEditor")}</button>
+      <button on:click={copyOutputToClipboard} disabled={!outputValue || !activeEditor()}><span class="button-icon" aria-hidden="true">📋</span>{t("actionCopyOutput")}</button>
       <button on:click={compareWithClipboard} disabled={!activeEditor() || isProcessing}><span class="button-icon" aria-hidden="true">🆚</span>{t("actionCompareClipboard")}</button>
       <div class="hint">{t("dragAndDropHint")}</div>
     </div>
@@ -1649,7 +1621,7 @@
         <div class="output">
           <MonacoEditor
             value={outputValue}
-            language={active().lang}
+            language={activeEditor()?.lang ?? sourceEditorForDiff()?.lang ?? active().lang}
             readonly={true}
           />
         </div>
