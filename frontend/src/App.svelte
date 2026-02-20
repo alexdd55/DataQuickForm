@@ -13,8 +13,11 @@
   } from "../wailsjs/go/main/App";
 
   type Locale = "en" | "de" | "es" | "pt" | "fr";
+  type ThemePreference = "system" | "light" | "dark";
+  type ResolvedTheme = "light" | "dark";
 
   const LOCALE_STORAGE_KEY = "dqf.language";
+  const THEME_STORAGE_KEY = "dqf.theme";
 
   const localeNames: Record<Locale, string> = {
     en: "English",
@@ -305,6 +308,42 @@
       pt: "Idioma",
       fr: "Langue"
     },
+
+    themeLabel: {
+      en: "Theme",
+      de: "Darstellung",
+      es: "Tema",
+      pt: "Tema",
+      fr: "Thème"
+    },
+    themeOptionSystem: {
+      en: "System",
+      de: "System",
+      es: "Sistema",
+      pt: "Sistema",
+      fr: "Système"
+    },
+    themeOptionLight: {
+      en: "Light",
+      de: "Hell",
+      es: "Claro",
+      pt: "Claro",
+      fr: "Clair"
+    },
+    themeOptionDark: {
+      en: "Dark",
+      de: "Dunkel",
+      es: "Oscuro",
+      pt: "Escuro",
+      fr: "Sombre"
+    },
+    themeUpdated: {
+      en: "Theme set to {theme}.",
+      de: "Darstellung auf {theme} gesetzt.",
+      es: "Tema configurado en {theme}.",
+      pt: "Tema definido para {theme}.",
+      fr: "Thème défini sur {theme}."
+    },
     close: {
       en: "Close",
       de: "Schließen",
@@ -333,8 +372,39 @@
     return "en";
   }
 
+  function isThemePreference(value: string): value is ThemePreference {
+    return value === "system" || value === "light" || value === "dark";
+  }
+
+  function detectInitialThemePreference(): ThemePreference {
+    if (typeof localStorage === "undefined") {
+      return "system";
+    }
+
+    const saved = localStorage.getItem(THEME_STORAGE_KEY);
+    if (saved && isThemePreference(saved)) {
+      return saved;
+    }
+
+    return "system";
+  }
+
+  function detectSystemTheme(): ResolvedTheme {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return "light";
+    }
+
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+
+
   let locale: Locale = detectInitialLocale();
+  let themePreference: ThemePreference = detectInitialThemePreference();
+  let systemTheme: ResolvedTheme = detectSystemTheme();
   let preferencesOpen = false;
+
+
+  $: effectiveTheme = themePreference === "system" ? systemTheme : themePreference;
 
   function t(key: TranslationKey, vars: Record<string, string> = {}): string {
     let text: string = translations[key][locale];
@@ -342,6 +412,22 @@
       text = text.replaceAll(`{${name}}`, value);
     }
     return text;
+  }
+
+
+  function setThemePreference(nextThemePreference: ThemePreference) {
+    themePreference = nextThemePreference;
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(THEME_STORAGE_KEY, nextThemePreference);
+    }
+
+    const themeLabel = nextThemePreference === "system"
+      ? t("themeOptionSystem")
+      : nextThemePreference === "light"
+        ? t("themeOptionLight")
+        : t("themeOptionDark");
+
+    status = { kind: "info", message: t("themeUpdated", { theme: themeLabel }) };
   }
 
   function setLocale(nextLocale: Locale) {
@@ -385,6 +471,27 @@
     column: number;
   } | null;
 
+  type AppPlatform = "macos" | "windows" | "linux";
+
+  function detectPlatform(): AppPlatform {
+    if (typeof navigator === "undefined") {
+      return "linux";
+    }
+
+    const source = [navigator.platform, navigator.userAgent]
+      .filter((value) => typeof value === "string")
+      .join(" ")
+      .toLowerCase();
+
+    if (source.includes("mac")) {
+      return "macos";
+    }
+    if (source.includes("win")) {
+      return "windows";
+    }
+    return "linux";
+  }
+
   function makeId(): string {
     if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
       return crypto.randomUUID();
@@ -413,6 +520,7 @@
   let errorPosition: ErrorPosition = null;
   let outputValue = "";
   let processingToken = 0;
+  let appPlatform: AppPlatform = detectPlatform();
 
   const active = () => tabs.find((t) => t.id === activeId) ?? tabs[0];
   const activeEditor = (): EditorTab | null => {
@@ -950,97 +1058,199 @@
     errorPosition = null;
   }
 
-  onMount(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 100));
+  onMount(() => {
+    const mediaQuery = typeof window !== "undefined" && typeof window.matchMedia === "function"
+      ? window.matchMedia("(prefers-color-scheme: dark)")
+      : null;
 
-    try {
-      OnFileDrop((_x: number, _y: number, files: string[]) => {
-        const validFiles = files.filter(
-          (f: string) => f.toLowerCase().endsWith(".json") || f.toLowerCase().endsWith(".xml")
-        );
-        if (validFiles.length > 0) {
-          openPath(validFiles[0]);
-        }
-      }, false);
+    const handleSystemThemeChange = (event: MediaQueryListEvent) => {
+      systemTheme = event.matches ? "dark" : "light";
+    };
 
-      EventsOn("menu:new", createNewFile);
-      EventsOn("menu:open", openFileFromDialog);
-      EventsOn("menu:save", saveActiveFile);
-      EventsOn("menu:saveas", saveActiveFileAs);
-      EventsOn("menu:about", showAbout);
-      EventsOn("menu:preferences", showPreferences);
-    } catch (error) {
-      console.error("Failed to initialize app runtime events:", error);
+    if (mediaQuery) {
+      systemTheme = mediaQuery.matches ? "dark" : "light";
+      mediaQuery.addEventListener("change", handleSystemThemeChange);
     }
+
+    (async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      try {
+        OnFileDrop((_x: number, _y: number, files: string[]) => {
+          const validFiles = files.filter(
+            (f: string) => f.toLowerCase().endsWith(".json") || f.toLowerCase().endsWith(".xml")
+          );
+          if (validFiles.length > 0) {
+            openPath(validFiles[0]);
+          }
+        }, false);
+
+        EventsOn("menu:new", createNewFile);
+        EventsOn("menu:open", openFileFromDialog);
+        EventsOn("menu:save", saveActiveFile);
+        EventsOn("menu:saveas", saveActiveFileAs);
+        EventsOn("menu:about", showAbout);
+        EventsOn("menu:preferences", showPreferences);
+      } catch (error) {
+        console.error("Failed to initialize app runtime events:", error);
+      }
+    })();
+
+    return () => {
+      mediaQuery?.removeEventListener("change", handleSystemThemeChange);
+    };
   });
 </script>
 
 <style>
   .root {
+    --toolbar-button-radius: 8px;
+    --ui-font: "Inter", "Segoe UI", system-ui, sans-serif;
+    --pref-dialog-bg: rgba(248, 250, 254, 0.95);
+    --pref-dialog-color: #1f2430;
+    --pref-border-color: #c5cfdf;
+    --pref-select-bg: #ffffff;
+    --pref-select-border: #bdc8da;
+    --pref-button-bg: linear-gradient(180deg, #ffffff 0%, #edf2fa 100%);
+
     height: 100vh;
     display: flex;
     flex-direction: column;
     min-height: 0;
-    background:
-      radial-gradient(circle at 8% -10%, rgba(126, 169, 255, 0.38), transparent 45%),
-      radial-gradient(circle at 100% 0, rgba(255, 177, 199, 0.33), transparent 38%),
-      linear-gradient(180deg, #f2f4f8 0%, #dce1e8 100%);
-    color: #1b1f26;
-    font-family: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    padding: 16px;
+    background: #edf0f3;
+    color: #1f1f1f;
+    font-family: var(--ui-font);
+    padding: 0;
     box-sizing: border-box;
-  }
-
-  .window-shell {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    border-radius: 14px;
     overflow: hidden;
-    border: 1px solid rgba(255, 255, 255, 0.6);
-    box-shadow:
-      0 22px 40px rgba(21, 41, 68, 0.2),
-      inset 0 1px 0 rgba(255, 255, 255, 0.65);
-    backdrop-filter: blur(14px);
-    background: rgba(243, 245, 249, 0.78);
   }
 
-  .window-titlebar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 14px;
-    background: linear-gradient(180deg, rgba(253, 253, 255, 0.93), rgba(229, 232, 238, 0.9));
-    border-bottom: 1px solid rgba(159, 171, 189, 0.5);
+  .root.platform-macos {
+    --toolbar-button-radius: 999px;
+    --ui-font: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #e7ecf4;
   }
 
-  .window-controls {
-    display: inline-flex;
-    gap: 8px;
-    align-items: center;
+  .root.platform-windows {
+    --toolbar-button-radius: 6px;
+    --ui-font: "Segoe UI", "Inter", Arial, sans-serif;
+    background: #e4ebf7;
   }
 
-  .traffic-light {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    box-shadow: inset 0 -1px 1px rgba(0, 0, 0, 0.25);
+  .root.platform-linux {
+    --toolbar-button-radius: 6px;
+    --ui-font: "Ubuntu", "Cantarell", "Noto Sans", "Segoe UI", sans-serif;
+    background: #e9ebef;
   }
 
-  .traffic-light.red { background: #ff5f57; }
-  .traffic-light.yellow { background: #ffbd2f; }
-  .traffic-light.green { background: #28c840; }
 
-  .window-title {
-    font-size: 0.82rem;
-    font-weight: 600;
-    color: rgba(32, 36, 44, 0.75);
-    letter-spacing: 0.01em;
+  .root.theme-dark {
+    background: #141922;
+    color: #e7ecf5;
+    --pref-dialog-bg: rgba(30, 39, 56, 0.98);
+    --pref-dialog-color: #e7ecf5;
+    --pref-border-color: #4f607f;
+    --pref-select-bg: #1f2a3c;
+    --pref-select-border: #536685;
+    --pref-button-bg: linear-gradient(180deg, #334158 0%, #243145 100%);
   }
+
+  .root.theme-dark .toolbar {
+    border-bottom: 1px solid rgba(104, 122, 156, 0.55);
+    background: rgba(27, 34, 48, 0.92);
+  }
+
+  .root.theme-dark .toolbar button {
+    border: 1px solid #4f607f;
+    background: linear-gradient(180deg, #334158 0%, #243145 100%);
+    color: #e7ecf5;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+
+  .root.theme-dark .toolbar button:hover:enabled {
+    background: linear-gradient(180deg, #3a4b66 0%, #2b3a51 100%);
+    border-color: #6e82a6;
+  }
+
+  .root.theme-dark .toolbar button:active:enabled {
+    background: linear-gradient(180deg, #25344a 0%, #1f2d41 100%);
+  }
+
+  .root.theme-dark .tabs {
+    background: #1b2433;
+    border-bottom: 1px solid rgba(94, 112, 146, 0.58);
+  }
+
+  .root.theme-dark .tab {
+    border-color: #4f607f;
+    background: linear-gradient(180deg, #2d3a50 0%, #253245 100%);
+    color: #c8d2e4;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+
+  .root.theme-dark .tab:hover {
+    background: linear-gradient(180deg, #374a64 0%, #2b3a51 100%);
+  }
+
+  .root.theme-dark .tab.active {
+    background: linear-gradient(180deg, #3b4f6f 0%, #31455f 100%);
+    border-color: #6880ab;
+    color: #eef3ff;
+    box-shadow: inset 0 2px 0 rgba(160, 188, 234, 0.18);
+  }
+
+  .root.theme-dark .tab-close:hover {
+    background: rgba(177, 200, 235, 0.2);
+  }
+
+  .root.theme-dark .tab-new {
+    border-color: #4f607f;
+    background: linear-gradient(180deg, #2d3a50 0%, #253245 100%);
+    color: #c8d2e4;
+  }
+
+  .root.theme-dark .tab-new:hover {
+    background: linear-gradient(180deg, #3a4b66 0%, #2b3a51 100%);
+    color: #eff4ff;
+  }
+
+  .root.theme-dark .sidebyside {
+    background: rgba(20, 27, 38, 0.88);
+  }
+
+  .root.theme-dark .editor,
+  .root.theme-dark .output {
+    border: 1px solid #4f607f;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+
+  .root.theme-dark .diff-funnel {
+    border: 1px solid rgba(111, 140, 192, 0.45);
+    background: linear-gradient(180deg, rgba(89, 122, 175, 0.28), rgba(89, 122, 175, 0.14));
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  }
+
+  .root.theme-dark .diff-funnel-icon {
+    background: rgba(104, 136, 190, 0.92);
+    color: #f4f8ff;
+  }
+
+  .root.theme-dark .hint {
+    color: #aebad0;
+  }
+
+  .root.theme-dark .footer {
+    border-top: 1px solid rgba(86, 104, 136, 0.75);
+    background: rgba(24, 31, 44, 0.92);
+  }
+
+  .root.theme-dark .status.info { color: #8cb6ff; }
+  .root.theme-dark .status.ok { color: #7ed39a; }
+  .root.theme-dark .status.error { color: #ff8e9b; }
+
 
   .toolbar {
-    padding: 12px;
+    padding: 0;
     display: flex;
     gap: 8px;
     align-items: center;
@@ -1051,9 +1261,9 @@
 
   .toolbar button {
     padding: 7px 14px;
-    border-radius: 999px;
+    border-radius: var(--toolbar-button-radius);
     border: 1px solid #c2cad8;
-    background: linear-gradient(180deg, #ffffff 0%, #eef1f6 100%);
+    background: linear-gradient(180deg, #ffffff 0%, #e9edf4 100%);
     color: #232a36;
     font-size: 0.85rem;
     font-weight: 500;
@@ -1101,7 +1311,7 @@
     gap: 6px;
     padding: 8px 10px 0;
     flex-wrap: wrap;
-    background: rgba(243, 246, 251, 0.7);
+    background: #edf1f7;
     border-bottom: 1px solid rgba(189, 198, 213, 0.55);
   }
 
@@ -1288,9 +1498,9 @@
   }
 
   .preferences-dialog {
-    background: rgba(248, 250, 254, 0.95);
-    color: #1f2430;
-    border: 1px solid #c5cfdf;
+    background: var(--pref-dialog-bg);
+    color: var(--pref-dialog-color);
+    border: 1px solid var(--pref-border-color);
     border-radius: 12px;
     width: min(360px, calc(100vw - 32px));
     padding: 16px;
@@ -1305,9 +1515,9 @@
   }
 
   .preferences-dialog select {
-    background: #ffffff;
-    color: #1f2430;
-    border: 1px solid #bdc8da;
+    background: var(--pref-select-bg);
+    color: var(--pref-dialog-color);
+    border: 1px solid var(--pref-select-border);
     border-radius: 6px;
     padding: 6px 12px;
     font-size: 0.85rem;
@@ -1318,9 +1528,9 @@
     align-self: flex-end;
     padding: 6px 12px;
     border-radius: 999px;
-    border: 1px solid #bdc8da;
-    background: linear-gradient(180deg, #ffffff 0%, #edf2fa 100%);
-    color: #1f2430;
+    border: 1px solid var(--pref-select-border);
+    background: var(--pref-button-bg);
+    color: var(--pref-dialog-color);
     font-size: 0.85rem;
     line-height: 1.2;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
@@ -1339,19 +1549,8 @@
   }
 </style>
 
-<div class="root">
-  <div class="window-shell">
-    <div class="window-titlebar">
-      <div class="window-controls" aria-hidden="true">
-        <span class="traffic-light red"></span>
-        <span class="traffic-light yellow"></span>
-        <span class="traffic-light green"></span>
-      </div>
-      <div class="window-title">JSON XML Editor</div>
-      <div style="width: 52px;"></div>
-    </div>
-
-    <div class="toolbar">
+<div class="root platform-{appPlatform} theme-{effectiveTheme}">
+  <div class="toolbar">
       <button on:click={runFormat} disabled={!supportsActions() || isProcessing}><span class="button-icon" aria-hidden="true">✨</span>{t("actionFormatApply")}</button>
       <button on:click={runValidate} disabled={!supportsActions() || isProcessing}><span class="button-icon" aria-hidden="true">✅</span>{t("actionValidate")}</button>
       <button on:click={undoActiveTab} disabled={!canUndoActive() || isProcessing} aria-label={t("actionUndo")} title={t("actionUndo")}><span class="button-icon" aria-hidden="true">↶</span></button>
@@ -1446,7 +1645,6 @@
     <div class="footer">
       <div class="status {status.kind}">{status.message}</div>
     </div>
-  </div>
 </div>
 
 {#if preferencesOpen}
@@ -1462,6 +1660,16 @@
         {#each Object.entries(localeNames) as [code, label]}
           <option value={code}>{label}</option>
         {/each}
+      </select>
+      <label for="theme-select">{t("themeLabel")}</label>
+      <select
+        id="theme-select"
+        value={themePreference}
+        on:change={(event) => setThemePreference((event.currentTarget as HTMLSelectElement).value as ThemePreference)}
+      >
+        <option value="system">{t("themeOptionSystem")}</option>
+        <option value="light">{t("themeOptionLight")}</option>
+        <option value="dark">{t("themeOptionDark")}</option>
       </select>
       <button type="button" on:click={() => (preferencesOpen = false)}><span class="button-icon" aria-hidden="true">✕</span>{t("close")}</button>
     </div>

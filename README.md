@@ -76,6 +76,12 @@ npm run check
 go test ./...
 ```
 
+
+### UI screenshot artifact (for UI review)
+
+When validating visual changes in a Codex/browser-tools session, prefer the MCP browser tool screenshot flow.
+If Chromium fails in the container, retry with Firefox/WebKit in the same tool session as a fallback.
+
 ## Logging
 
 By default, the application writes logs to:
