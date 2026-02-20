@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import MonacoEditor from "./lib/MonacoEditor.svelte";
-  import { EventsOn, OnFileDrop } from "../wailsjs/runtime/runtime";
+  import { ClipboardGetText, ClipboardSetText, EventsOn, OnFileDrop } from "../wailsjs/runtime/runtime";
   import {
     FormatContent,
     OpenFile,
@@ -455,6 +455,7 @@
 
   type DiffTab = BaseTab & {
     kind: "diff";
+    sourceEditorId: string;
     originalValue: string;
     value: string;
   };
@@ -525,7 +526,12 @@
   const active = () => tabs.find((t) => t.id === activeId) ?? tabs[0];
   const activeEditor = (): EditorTab | null => {
     const tab = active();
-    return tab.kind === "editor" ? tab : null;
+    if (tab.kind === "editor") {
+      return tab;
+    }
+
+    const sourceEditor = tabs.find((item) => item.id === tab.sourceEditorId);
+    return sourceEditor && sourceEditor.kind === "editor" ? sourceEditor : null;
   };
 
   function setActiveValue(v: string, options: { recordUndo?: boolean } = {}) {
@@ -970,6 +976,8 @@
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(outputValue);
+      } else if (typeof ClipboardSetText === "function") {
+        await ClipboardSetText(outputValue);
       } else {
         const helper = document.createElement("textarea");
         helper.value = outputValue;
@@ -996,21 +1004,26 @@
       return;
     }
 
-    if (!navigator.clipboard?.readText) {
-      status = { kind: "error", message: t("clipboardUnavailable") };
-      return;
-    }
-
     try {
-      const clipboardValue = await navigator.clipboard.readText();
+      let clipboardValue = "";
+      if (navigator.clipboard?.readText) {
+        clipboardValue = await navigator.clipboard.readText();
+      } else if (typeof ClipboardGetText === "function") {
+        clipboardValue = await ClipboardGetText();
+      } else {
+        status = { kind: "error", message: t("clipboardUnavailable") };
+        return;
+      }
+
       const id = makeId();
       const diffTab: DiffTab = {
         id,
         kind: "diff",
+        sourceEditorId: tab.id,
         title: t("diffTabTitle", { name: tab.title }),
         lang: tab.lang,
-        originalValue: clipboardValue,
-        value: tab.value
+        originalValue: tab.value,
+        value: clipboardValue
       };
 
       const activeIndex = tabs.findIndex((item) => item.id === activeId);
@@ -1021,7 +1034,7 @@
         ...tabs.slice(insertIndex)
       ];
       activeId = id;
-      outputValue = clipboardValue;
+      outputValue = tab.value;
       status = { kind: "ok", message: t("diffCreated") };
     } catch (error) {
       status = { kind: "error", message: t("clipboardReadFailed", { error: (error as Error).message }) };
@@ -1555,11 +1568,11 @@
       <button on:click={runValidate} disabled={!supportsActions() || isProcessing}><span class="button-icon" aria-hidden="true">✅</span>{t("actionValidate")}</button>
       <button on:click={undoActiveTab} disabled={!canUndoActive() || isProcessing} aria-label={t("actionUndo")} title={t("actionUndo")}><span class="button-icon" aria-hidden="true">↶</span></button>
       <button on:click={redoActiveTab} disabled={!canRedoActive() || isProcessing} aria-label={t("actionRedo")} title={t("actionRedo")}><span class="button-icon" aria-hidden="true">↷</span></button>
-      <button on:click={clearActiveTab} disabled={active().kind !== "editor" || !active().value}><span class="button-icon" aria-hidden="true">🧹</span>{t("actionClearEditor")}</button>
+      <button on:click={clearActiveTab} disabled={!activeEditor() || !activeEditor()?.value}><span class="button-icon" aria-hidden="true">🧹</span>{t("actionClearEditor")}</button>
       <button on:click={runCompress} disabled={!outputValue || isProcessing}><span class="button-icon" aria-hidden="true">🗜</span>{t("actionCompressOutput")}</button>
       <button on:click={copyOutputToEditor} disabled={!outputValue}><span class="button-icon" aria-hidden="true">⤴</span>{t("actionOutputToEditor")}</button>
       <button on:click={copyOutputToClipboard} disabled={!outputValue}><span class="button-icon" aria-hidden="true">📋</span>{t("actionCopyOutput")}</button>
-      <button on:click={compareWithClipboard} disabled={active().kind !== "editor" || isProcessing}><span class="button-icon" aria-hidden="true">🆚</span>{t("actionCompareClipboard")}</button>
+      <button on:click={compareWithClipboard} disabled={!activeEditor() || isProcessing}><span class="button-icon" aria-hidden="true">🆚</span>{t("actionCompareClipboard")}</button>
       <div class="hint">{t("dragAndDropHint")}</div>
     </div>
 
@@ -1609,8 +1622,8 @@
             </div>
             <MonacoEditor
               mode="diff"
-              value={(active() as DiffTab).originalValue}
-              originalValue={active().value}
+              value={active().value}
+              originalValue={(active() as DiffTab).originalValue}
               language={active().lang}
               readonly={false}
               onChange={setActiveDiffValue}
